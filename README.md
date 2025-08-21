@@ -35,6 +35,19 @@ An interactive tool that helps organizations assess their "secrets footprint" - 
 - HTML reports for sharing
 - JSON data export for integration
 
+### 🌐 Web Application
+- **Complete 4-step workflow**: Start → SSH Analysis → Systems Selection → Assessment Results
+- **Interactive risk visualization**: Chart.js powered charts showing risk distribution and secrets analysis
+- **Three example environments**: Tech Startup, Enterprise Corporation, and Mixed Environment demos
+- **Comprehensive reporting**: HTML, JSON, and Executive summary exports
+- **Real-time analysis**: Live SSH key scanning and system configuration
+- **Optimized performance**: Cache-based session management for large datasets
+
+**Example Environments:**
+1. **🚀 Tech Startup** - Modern cloud-first environment (3 systems, 21 secrets)
+2. **🏢 Enterprise Corporation** - Mature security practices (4 systems, 329 secrets)
+3. **🔄 Mixed Environment** - Legacy + modern integration (5 systems, 137 secrets)
+
 ## 🚀 Quick Start
 
 ### Prerequisites
@@ -60,9 +73,17 @@ An interactive tool that helps organizations assess their "secrets footprint" - 
    ```
 
 3. **Run the tool:**
+   
+   **CLI Version (Terminal):**
    ```bash
    python secrets_audit.py
    ```
+   
+   **Web Version (Browser):**
+   ```bash
+   python run_webapp.py
+   ```
+   Then open http://localhost:5000 in your browser
 
 ### First Assessment
 

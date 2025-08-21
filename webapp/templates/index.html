@@ -1,0 +1,310 @@
+{% extends "base.html" %}
+
+{% block title %}Home - Secrets Footprint Assessment Tool{% endblock %}
+
+{% block content %}
+<!-- Hero Section -->
+<section class="hero-section">
+    <div class="container">
+        <div class="row align-items-center">
+            <div class="col-lg-8">
+                <h1 class="display-4 fw-bold mb-4">
+                    <i class="fas fa-search me-3"></i>
+                    Secrets Footprint Assessment
+                </h1>
+                <p class="lead mb-4">
+                    Discover, analyze, and improve your organization's secrets security posture. 
+                    Get comprehensive risk assessments with actionable recommendations.
+                </p>
+                <div class="d-flex flex-wrap gap-3">
+                    <a href="{{ url_for('start_assessment') }}" class="btn btn-light btn-lg px-4">
+                        <i class="fas fa-rocket me-2"></i>
+                        Start Assessment
+                    </a>
+                    <a href="{{ url_for('show_examples') }}" class="btn btn-outline-light btn-lg px-4">
+                        <i class="fas fa-eye me-2"></i>
+                        View Examples
+                    </a>
+                </div>
+            </div>
+            <div class="col-lg-4 text-center">
+                <i class="fas fa-shield-alt" style="font-size: 12rem; opacity: 0.3;"></i>
+            </div>
+        </div>
+    </div>
+</section>
+
+<div class="container">
+    <!-- Features Section -->
+    <section class="mb-5">
+        <div class="row">
+            <div class="col-12 text-center mb-4">
+                <h2 class="display-6 fw-bold">What This Tool Does</h2>
+                <p class="lead text-muted">Comprehensive assessment of your secrets security posture</p>
+            </div>
+        </div>
+        
+        <div class="row g-4">
+            <div class="col-md-6 col-lg-3">
+                <div class="card h-100 text-center">
+                    <div class="card-body">
+                        <i class="fas fa-key text-primary mb-3" style="font-size: 3rem;"></i>
+                        <h5 class="card-title">SSH Key Analysis</h5>
+                        <p class="card-text">
+                            Scan and analyze SSH keys for security issues, permissions, and best practices compliance.
+                        </p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-6 col-lg-3">
+                <div class="card h-100 text-center">
+                    <div class="card-body">
+                        <i class="fas fa-server text-success mb-3" style="font-size: 3rem;"></i>
+                        <h5 class="card-title">System Inventory</h5>
+                        <p class="card-text">
+                            Assess 15+ systems including CI/CD, cloud providers, secret managers, and databases.
+                        </p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-6 col-lg-3">
+                <div class="card h-100 text-center">
+                    <div class="card-body">
+                        <i class="fas fa-chart-line text-warning mb-3" style="font-size: 3rem;"></i>
+                        <h5 class="card-title">Risk Scoring</h5>
+                        <p class="card-text">
+                            Calculate comprehensive risk scores based on multiple security factors and best practices.
+                        </p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-6 col-lg-3">
+                <div class="card h-100 text-center">
+                    <div class="card-body">
+                        <i class="fas fa-file-alt text-info mb-3" style="font-size: 3rem;"></i>
+                        <h5 class="card-title">Detailed Reports</h5>
+                        <p class="card-text">
+                            Generate executive summaries, technical reports, and visualizations for stakeholders.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- How It Works Section -->
+    <section class="mb-5">
+        <div class="row">
+            <div class="col-12 text-center mb-4">
+                <h2 class="display-6 fw-bold">How It Works</h2>
+                <p class="lead text-muted">Simple 4-step process, takes 5-10 minutes</p>
+            </div>
+        </div>
+        
+        <div class="row g-4">
+            <div class="col-md-6 col-lg-3">
+                <div class="card h-100">
+                    <div class="card-body text-center">
+                        <div class="step-number mb-3 mx-auto" style="background: var(--primary-color); color: white; width: 60px; height: 60px; font-size: 1.5rem;">1</div>
+                        <h5 class="card-title">SSH Analysis</h5>
+                        <p class="card-text">
+                            Scan your SSH keys for security issues, weak algorithms, and permission problems.
+                        </p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-6 col-lg-3">
+                <div class="card h-100">
+                    <div class="card-body text-center">
+                        <div class="step-number mb-3 mx-auto" style="background: var(--primary-color); color: white; width: 60px; height: 60px; font-size: 1.5rem;">2</div>
+                        <h5 class="card-title">System Selection</h5>
+                        <p class="card-text">
+                            Choose systems you use and answer questions about your secret management practices.
+                        </p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-6 col-lg-3">
+                <div class="card h-100">
+                    <div class="card-body text-center">
+                        <div class="step-number mb-3 mx-auto" style="background: var(--primary-color); color: white; width: 60px; height: 60px; font-size: 1.5rem;">3</div>
+                        <h5 class="card-title">Risk Assessment</h5>
+                        <p class="card-text">
+                            Automatic calculation of risk scores based on your configurations and best practices.
+                        </p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-6 col-lg-3">
+                <div class="card h-100">
+                    <div class="card-body text-center">
+                        <div class="step-number mb-3 mx-auto" style="background: var(--primary-color); color: white; width: 60px; height: 60px; font-size: 1.5rem;">4</div>
+                        <h5 class="card-title">Results & Reports</h5>
+                        <p class="card-text">
+                            View interactive results and download reports for technical teams and management.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Supported Systems Section -->
+    <section class="mb-5">
+        <div class="row">
+            <div class="col-12 text-center mb-4">
+                <h2 class="display-6 fw-bold">Supported Systems</h2>
+                <p class="lead text-muted">Comprehensive coverage of modern infrastructure</p>
+            </div>
+        </div>
+        
+        <div class="row g-4">
+            <div class="col-md-6 col-lg-3">
+                <div class="card h-100">
+                    <div class="card-header bg-primary text-white text-center">
+                        <i class="fas fa-cogs me-2"></i>
+                        <strong>CI/CD Platforms</strong>
+                    </div>
+                    <div class="card-body">
+                        <ul class="list-unstyled mb-0">
+                            <li><i class="fab fa-github me-2"></i> GitHub Actions</li>
+                            <li><i class="fas fa-tools me-2"></i> Jenkins</li>
+                            <li><i class="fab fa-gitlab me-2"></i> GitLab CI</li>
+                            <li><i class="fab fa-microsoft me-2"></i> Azure DevOps</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-6 col-lg-3">
+                <div class="card h-100">
+                    <div class="card-header bg-success text-white text-center">
+                        <i class="fas fa-cloud me-2"></i>
+                        <strong>Cloud Providers</strong>
+                    </div>
+                    <div class="card-body">
+                        <ul class="list-unstyled mb-0">
+                            <li><i class="fab fa-aws me-2"></i> Amazon AWS</li>
+                            <li><i class="fab fa-google me-2"></i> Google Cloud</li>
+                            <li><i class="fab fa-microsoft me-2"></i> Microsoft Azure</li>
+                            <li><i class="fas fa-cloud me-2"></i> Multi-cloud setups</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-6 col-lg-3">
+                <div class="card h-100">
+                    <div class="card-header bg-warning text-white text-center">
+                        <i class="fas fa-lock me-2"></i>
+                        <strong>Secret Managers</strong>
+                    </div>
+                    <div class="card-body">
+                        <ul class="list-unstyled mb-0">
+                            <li><i class="fas fa-vault me-2"></i> HashiCorp Vault</li>
+                            <li><i class="fas fa-key me-2"></i> 1Password</li>
+                            <li><i class="fas fa-shield me-2"></i> Bitwarden</li>
+                            <li><i class="fas fa-user-secret me-2"></i> Custom solutions</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-6 col-lg-3">
+                <div class="card h-100">
+                    <div class="card-header bg-info text-white text-center">
+                        <i class="fas fa-container-storage me-2"></i>
+                        <strong>Platforms</strong>
+                    </div>
+                    <div class="card-body">
+                        <ul class="list-unstyled mb-0">
+                            <li><i class="fab fa-docker me-2"></i> Docker</li>
+                            <li><i class="fas fa-dharmachakra me-2"></i> Kubernetes</li>
+                            <li><i class="fas fa-database me-2"></i> Databases</li>
+                            <li><i class="fas fa-code-branch me-2"></i> Git repositories</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Benefits Section -->
+    <section class="mb-5">
+        <div class="card border-0" style="background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);">
+            <div class="card-body p-5">
+                <div class="row align-items-center">
+                    <div class="col-lg-6">
+                        <h2 class="display-6 fw-bold mb-4">Why Use This Tool?</h2>
+                        <div class="row g-3">
+                            <div class="col-12">
+                                <div class="d-flex align-items-center mb-2">
+                                    <i class="fas fa-shield-check text-success me-3" style="font-size: 1.5rem;"></i>
+                                    <h5 class="mb-0">Improve Security Posture</h5>
+                                </div>
+                                <p class="text-muted mb-0">Identify and remediate security risks before they become incidents.</p>
+                            </div>
+                            
+                            <div class="col-12">
+                                <div class="d-flex align-items-center mb-2">
+                                    <i class="fas fa-clock text-primary me-3" style="font-size: 1.5rem;"></i>
+                                    <h5 class="mb-0">Save Time</h5>
+                                </div>
+                                <p class="text-muted mb-0">Automated assessment replaces hours of manual security reviews.</p>
+                            </div>
+                            
+                            <div class="col-12">
+                                <div class="d-flex align-items-center mb-2">
+                                    <i class="fas fa-chart-bar text-info me-3" style="font-size: 1.5rem;"></i>
+                                    <h5 class="mb-0">Data-Driven Decisions</h5>
+                                </div>
+                                <p class="text-muted mb-0">Prioritized recommendations based on actual risk levels.</p>
+                            </div>
+                            
+                            <div class="col-12">
+                                <div class="d-flex align-items-center mb-2">
+                                    <i class="fas fa-user-tie text-warning me-3" style="font-size: 1.5rem;"></i>
+                                    <h5 class="mb-0">Executive Visibility</h5>
+                                </div>
+                                <p class="text-muted mb-0">Management-friendly reports for security governance and budget planning.</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-lg-6 text-center">
+                        <i class="fas fa-trophy text-warning" style="font-size: 8rem; opacity: 0.7;"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Call to Action -->
+    <section class="text-center mb-5">
+        <div class="card border-0" style="background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);">
+            <div class="card-body p-5 text-white">
+                <h2 class="display-5 fw-bold mb-4">Ready to Assess Your Secrets Security?</h2>
+                <p class="lead mb-4">
+                    Get started with a comprehensive assessment that takes just 5-10 minutes.
+                    All analysis runs locally - your data stays private and secure.
+                </p>
+                <div class="d-flex justify-content-center gap-3 flex-wrap">
+                    <a href="{{ url_for('start_assessment') }}" class="btn btn-light btn-lg px-4">
+                        <i class="fas fa-play me-2"></i>
+                        Start Assessment Now
+                    </a>
+                    <a href="{{ url_for('show_examples') }}" class="btn btn-outline-light btn-lg px-4">
+                        <i class="fas fa-eye me-2"></i>
+                        See Example Results
+                    </a>
+                </div>
+            </div>
+        </div>
+    </section>
+</div>
+{% endblock %}

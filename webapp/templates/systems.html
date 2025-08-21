@@ -1,0 +1,321 @@
+{% extends "base.html" %}
+
+{% block title %}Systems Selection - Secrets Footprint Assessment Tool{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <!-- Progress Steps -->
+    <div class="step-indicator mb-4">
+        <div class="step completed">
+            <div class="step-number">1</div>
+            Setup
+        </div>
+        <div class="step-connector"></div>
+        <div class="step completed">
+            <div class="step-number">2</div>
+            SSH Analysis
+        </div>
+        <div class="step-connector"></div>
+        <div class="step active">
+            <div class="step-number">3</div>
+            Systems
+        </div>
+        <div class="step-connector"></div>
+        <div class="step">
+            <div class="step-number">4</div>
+            Results
+        </div>
+    </div>
+
+    <!-- Header -->
+    <div class="text-center mb-4">
+        <h1 class="display-6 fw-bold">
+            <i class="fas fa-server text-primary me-3"></i>
+            Systems & Tools Selection
+        </h1>
+        <p class="lead text-muted">
+            Select the systems where you store secrets and credentials
+        </p>
+    </div>
+
+    {% if using_example %}
+    <!-- Example Environment Display -->
+    <div class="alert alert-info mb-4">
+        <i class="fas fa-info-circle me-2"></i>
+        <strong>Demo Mode:</strong> Systems have been pre-configured based on your selected example environment.
+        You can view the configured systems below.
+    </div>
+
+    <div class="row g-3 mb-4">
+        {% for system in selected_systems %}
+        <div class="col-lg-6">
+            <div class="card system-card">
+                <div class="card-body">
+                    <div class="d-flex align-items-center justify-content-between">
+                        <div>
+                            <h6 class="card-title mb-1">{{ system.name }}</h6>
+                            <div class="d-flex gap-2 mb-2">
+                                <span class="badge bg-secondary">{{ system.type.replace('_', ' ').title() }}</span>
+                                <span class="badge bg-info">{{ system.secrets_count }} secrets</span>
+                                <span class="badge {% if system.risk_score >= 4 %}bg-danger{% elif system.risk_score >= 3 %}bg-warning{% else %}bg-success{% endif %}">
+                                    Risk: {{ system.risk_score }}/5
+                                </span>
+                            </div>
+                        </div>
+                        <div class="text-end">
+                            <div class="d-flex gap-1">
+                                {% if system.encryption_enabled %}
+                                <span class="badge bg-success">🔐</span>
+                                {% endif %}
+                                {% if system.audit_logging %}
+                                <span class="badge bg-info">📋</span>
+                                {% endif %}
+                                {% if system.auto_rotation %}
+                                <span class="badge bg-primary">🔄</span>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <div class="text-center">
+        <a href="{{ url_for('show_assessment') }}" class="btn btn-primary btn-lg px-4">
+            <i class="fas fa-arrow-right me-2"></i>
+            Continue to Assessment Results
+        </a>
+    </div>
+
+    {% else %}
+    <!-- Real Systems Selection -->
+    <div class="row">
+        {% for category_name, category_systems in systems.items() %}
+        <div class="col-lg-6 mb-4">
+            <div class="card h-100">
+                <div class="card-header {% if category_name == 'Ci Cd' %}bg-primary text-white{% elif category_name == 'Cloud Provider' %}bg-success text-white{% elif category_name == 'Secret Manager' %}bg-warning text-dark{% elif category_name == 'Container Platform' %}bg-info text-white{% else %}bg-secondary text-white{% endif %}">
+                    <h5 class="mb-0">
+                        <i class="fas fa-{% if category_name == 'Ci Cd' %}cogs{% elif category_name == 'Cloud Provider' %}cloud{% elif category_name == 'Secret Manager' %}lock{% elif category_name == 'Container Platform' %}container-storage{% else %}server{% endif %} me-2"></i>
+                        {{ category_name }}
+                    </h5>
+                </div>
+                <div class="card-body">
+                    {% for system in category_systems %}
+                    <div class="system-option mb-3 p-3 border rounded">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="system_{{ system.name|replace(' ', '_') }}" onchange="toggleSystem('{{ system.name }}', this.checked)">
+                            <label class="form-check-label w-100" for="system_{{ system.name|replace(' ', '_') }}">
+                                <div class="d-flex justify-content-between align-items-start">
+                                    <div>
+                                        <h6 class="mb-1">{{ system.name }}</h6>
+                                        <p class="text-muted small mb-2">{{ system.description }}</p>
+                                        <div class="small">
+                                            <strong>Common secrets:</strong> {{ system.common_secrets|join(', ') }}
+                                        </div>
+                                    </div>
+                                </div>
+                            </label>
+                        </div>
+                        
+                        <!-- System Configuration Modal Trigger -->
+                        <div class="system-config" id="config_{{ system.name|replace(' ', '_') }}" style="display: none;">
+                            <div class="mt-3 p-3 bg-light rounded">
+                                <h6 class="mb-3">Configuration Questions</h6>
+                                <div class="questions-container" id="questions_{{ system.name|replace(' ', '_') }}">
+                                    {% for question in system.questions %}
+                                    <div class="mb-3">
+                                        <label class="form-label small fw-bold">{{ question.text }}</label>
+                                        <input type="text" class="form-control form-control-sm" 
+                                               name="{{ question.key }}" 
+                                               data-system="{{ system.name }}"
+                                               placeholder="Enter your answer">
+                                    </div>
+                                    {% endfor %}
+                                </div>
+                                <button class="btn btn-primary btn-sm" onclick="configureSystem('{{ system.name }}')">
+                                    <i class="fas fa-check me-1"></i>
+                                    Configure System
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <!-- Selected Systems Summary -->
+    <div id="selectedSystems" class="mt-5" style="display: none;">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-check-circle text-success me-2"></i>
+                    Configured Systems
+                </h5>
+            </div>
+            <div class="card-body" id="systemsSummary">
+                <!-- Configured systems will appear here -->
+            </div>
+            <div class="card-footer text-center">
+                <a href="{{ url_for('show_assessment') }}" class="btn btn-primary btn-lg px-4">
+                    <i class="fas fa-chart-line me-2"></i>
+                    Generate Risk Assessment
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Skip Option -->
+    <div class="text-center mt-4">
+        <button class="btn btn-outline-secondary" onclick="skipSystemsSelection()">
+            <i class="fas fa-forward me-2"></i>
+            Skip Systems Selection
+        </button>
+    </div>
+    {% endif %}
+</div>
+
+<style>
+.system-option {
+    transition: all 0.2s ease;
+    cursor: pointer;
+}
+
+.system-option:hover {
+    background-color: #f8f9fa;
+    transform: translateY(-1px);
+}
+
+.form-check-input:checked ~ .form-check-label {
+    background-color: #e3f2fd;
+}
+
+.system-card::before {
+    background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
+}
+</style>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+const configuredSystems = new Map();
+
+function toggleSystem(systemName, isChecked) {
+    const configDiv = document.getElementById(`config_${systemName.replace(/\s+/g, '_')}`);
+    
+    if (isChecked) {
+        configDiv.style.display = 'block';
+        configDiv.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    } else {
+        configDiv.style.display = 'none';
+        // Remove from configured systems if unchecked
+        configuredSystems.delete(systemName);
+        updateSystemsSummary();
+    }
+}
+
+function configureSystem(systemName) {
+    const questionsContainer = document.getElementById(`questions_${systemName.replace(/\s+/g, '_')}`);
+    const inputs = questionsContainer.querySelectorAll('input');
+    
+    const responses = {};
+    inputs.forEach(input => {
+        responses[input.name] = input.value;
+    });
+    
+    // Show loading state
+    const button = event.target;
+    const originalText = button.innerHTML;
+    button.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Configuring...';
+    button.disabled = true;
+    
+    // Send configuration to server
+    fetch('/api/configure-system', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            system_name: systemName,
+            responses: responses
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            configuredSystems.set(systemName, data.system);
+            updateSystemsSummary();
+            
+            // Update button to show success
+            button.innerHTML = '<i class="fas fa-check me-1"></i>Configured';
+            button.className = 'btn btn-success btn-sm';
+            
+            showAlert(`✅ ${systemName} configured successfully!`, 'success');
+        } else {
+            showAlert(`❌ Failed to configure ${systemName}: ${data.error}`, 'danger');
+            button.innerHTML = originalText;
+            button.disabled = false;
+        }
+    })
+    .catch(error => {
+        showAlert(`❌ Network error: ${error.message}`, 'danger');
+        button.innerHTML = originalText;
+        button.disabled = false;
+    });
+}
+
+function updateSystemsSummary() {
+    const summaryDiv = document.getElementById('systemsSummary');
+    const selectedDiv = document.getElementById('selectedSystems');
+    
+    if (configuredSystems.size === 0) {
+        selectedDiv.style.display = 'none';
+        return;
+    }
+    
+    selectedDiv.style.display = 'block';
+    
+    let html = '<div class="row g-3">';
+    
+    configuredSystems.forEach((system, name) => {
+        const riskColor = system.risk_score >= 4 ? 'danger' : system.risk_score >= 3 ? 'warning' : 'success';
+        
+        html += `
+        <div class="col-md-6">
+            <div class="card border-${riskColor}">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <h6 class="card-title">${system.name}</h6>
+                            <div class="d-flex gap-2 mb-2">
+                                <span class="badge bg-secondary">${system.type.replace(/_/g, ' ')}</span>
+                                <span class="badge bg-info">${system.secrets_count} secrets</span>
+                                <span class="badge bg-${riskColor}">Risk: ${system.risk_score}/5</span>
+                            </div>
+                        </div>
+                        <div>
+                            ${system.encryption_enabled ? '<span class="badge bg-success">🔐</span>' : ''}
+                            ${system.audit_logging ? '<span class="badge bg-info">📋</span>' : ''}
+                            ${system.auto_rotation ? '<span class="badge bg-primary">🔄</span>' : ''}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>`;
+    });
+    
+    html += '</div>';
+    summaryDiv.innerHTML = html;
+}
+
+function skipSystemsSelection() {
+    if (confirm('Are you sure you want to skip systems selection? The assessment will focus only on SSH keys and general recommendations.')) {
+        window.location.href = '/assessment';
+    }
+}
+</script>
+{% endblock %}

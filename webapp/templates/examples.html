@@ -1,0 +1,275 @@
+{% extends "base.html" %}
+
+{% block title %}Example Environments - Secrets Footprint Assessment Tool{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="text-center mb-5">
+        <h1 class="display-5 fw-bold">
+            <i class="fas fa-eye text-primary me-3"></i>
+            Example Environments
+        </h1>
+        <p class="lead text-muted">
+            Explore different organizational scenarios and see how the tool works
+        </p>
+    </div>
+
+    <!-- Examples Overview -->
+    <div class="row g-4">
+        {% for env_key, env_data in examples.items() %}
+        <div class="col-lg-4">
+            <div class="card h-100 example-card">
+                <div class="card-header {% if env_key == 'startup' %}bg-success text-white{% elif env_key == 'enterprise' %}bg-primary text-white{% else %}bg-warning text-dark{% endif %}">
+                    <h4 class="mb-0 text-center">
+                        <i class="fas fa-{% if env_key == 'startup' %}rocket{% elif env_key == 'enterprise' %}building{% else %}balance-scale{% endif %} me-2"></i>
+                        {{ env_data.name }}
+                    </h4>
+                </div>
+                <div class="card-body d-flex flex-column">
+                    <p class="card-text mb-4">{{ env_data.description }}</p>
+                    
+                    <!-- Environment Stats -->
+                    <div class="row g-2 mb-4">
+                        <div class="col-6">
+                            <div class="metric-mini">
+                                <span class="metric-value-mini">{{ env_data.systems|length }}</span>
+                                <span class="metric-label-mini">Systems</span>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="metric-mini">
+                                <span class="metric-value-mini">{{ env_data.ssh_keys|length }}</span>
+                                <span class="metric-label-mini">SSH Keys</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Systems List -->
+                    <div class="mb-4">
+                        <h6 class="fw-bold mb-2">Included Systems:</h6>
+                        <div class="d-flex flex-wrap gap-1">
+                            {% for system in env_data.systems %}
+                            <span class="badge bg-secondary small">{{ system.name }}</span>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    
+                    <!-- SSH Keys Summary -->
+                    <div class="mb-4">
+                        <h6 class="fw-bold mb-2">SSH Keys Profile:</h6>
+                        {% set secure_keys = env_data.ssh_keys | selectattr('passphrase') | list %}
+                        {% set weak_keys = env_data.ssh_keys | rejectattr('passphrase') | list %}
+                        <div class="small">
+                            {% if secure_keys %}
+                            <div class="text-success">
+                                <i class="fas fa-shield-check me-1"></i>
+                                {{ secure_keys|length }} secure key{{ 's' if secure_keys|length != 1 else '' }}
+                            </div>
+                            {% endif %}
+                            {% if weak_keys %}
+                            <div class="text-warning">
+                                <i class="fas fa-exclamation-triangle me-1"></i>
+                                {{ weak_keys|length }} key{{ 's' if weak_keys|length != 1 else '' }} with security issues
+                            </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                    
+                    <!-- Expected Risk Level -->
+                    <div class="mb-4">
+                        <h6 class="fw-bold mb-2">Expected Risk Level:</h6>
+                        {% if env_key == 'startup' %}
+                        <span class="badge bg-warning">Medium Risk</span>
+                        <small class="d-block text-muted mt-1">Growing fast, some security gaps</small>
+                        {% elif env_key == 'enterprise' %}
+                        <span class="badge bg-success">Low Risk</span>
+                        <small class="d-block text-muted mt-1">Mature security practices</small>
+                        {% else %}
+                        <span class="badge bg-danger">High Risk</span>
+                        <small class="d-block text-muted mt-1">Legacy systems, mixed practices</small>
+                        {% endif %}
+                    </div>
+                    
+                    <div class="mt-auto">
+                        <form method="POST" action="{{ url_for('create_assessment') }}">
+                            <input type="hidden" name="example_environment" value="{{ env_key }}">
+                            <button type="submit" class="btn btn-{% if env_key == 'startup' %}success{% elif env_key == 'enterprise' %}primary{% else %}warning{% endif %} w-100">
+                                <i class="fas fa-play me-2"></i>
+                                Try This Example
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <!-- Features Comparison -->
+    <div class="row mt-5">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header text-center">
+                    <h4 class="mb-0">
+                        <i class="fas fa-balance-scale me-2"></i>
+                        Environment Comparison
+                    </h4>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Feature</th>
+                                    <th class="text-center">Tech Startup</th>
+                                    <th class="text-center">Enterprise</th>
+                                    <th class="text-center">Mixed Environment</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td><i class="fas fa-server me-2"></i> <strong>Systems Count</strong></td>
+                                    <td class="text-center">{{ examples.startup.systems|length }}</td>
+                                    <td class="text-center">{{ examples.enterprise.systems|length }}</td>
+                                    <td class="text-center">{{ examples.mixed.systems|length }}</td>
+                                </tr>
+                                <tr>
+                                    <td><i class="fas fa-key me-2"></i> <strong>SSH Keys</strong></td>
+                                    <td class="text-center">{{ examples.startup.ssh_keys|length }}</td>
+                                    <td class="text-center">{{ examples.enterprise.ssh_keys|length }}</td>
+                                    <td class="text-center">{{ examples.mixed.ssh_keys|length }}</td>
+                                </tr>
+                                <tr>
+                                    <td><i class="fas fa-shield me-2"></i> <strong>Secret Manager</strong></td>
+                                    <td class="text-center">❌ No dedicated solution</td>
+                                    <td class="text-center">✅ HashiCorp Vault</td>
+                                    <td class="text-center">✅ 1Password</td>
+                                </tr>
+                                <tr>
+                                    <td><i class="fas fa-cloud me-2"></i> <strong>Cloud Maturity</strong></td>
+                                    <td class="text-center">🟡 Basic AWS usage</td>
+                                    <td class="text-center">✅ Advanced multi-cloud</td>
+                                    <td class="text-center">🟡 Mixed cloud adoption</td>
+                                </tr>
+                                <tr>
+                                    <td><i class="fas fa-code-branch me-2"></i> <strong>Git Repository Risk</strong></td>
+                                    <td class="text-center">🟢 Clean</td>
+                                    <td class="text-center">🟢 Scanned & Clean</td>
+                                    <td class="text-center">🚨 Secrets in git</td>
+                                </tr>
+                                <tr>
+                                    <td><i class="fas fa-cogs me-2"></i> <strong>CI/CD Security</strong></td>
+                                    <td class="text-center">🟡 Basic GitHub Actions</td>
+                                    <td class="text-center">✅ Enterprise Jenkins + Vault</td>
+                                    <td class="text-center">⚠️ Mixed systems</td>
+                                </tr>
+                                <tr>
+                                    <td><i class="fas fa-chart-line me-2"></i> <strong>Expected Risk</strong></td>
+                                    <td class="text-center"><span class="badge bg-warning">Medium</span></td>
+                                    <td class="text-center"><span class="badge bg-success">Low</span></td>
+                                    <td class="text-center"><span class="badge bg-danger">High</span></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- What You'll See -->
+    <div class="row mt-5">
+        <div class="col-12">
+            <div class="card border-info">
+                <div class="card-header bg-info text-white">
+                    <h4 class="mb-0">
+                        <i class="fas fa-list-check me-2"></i>
+                        What You'll Experience
+                    </h4>
+                </div>
+                <div class="card-body">
+                    <div class="row g-4">
+                        <div class="col-md-4">
+                            <div class="text-center">
+                                <i class="fas fa-key text-primary mb-3" style="font-size: 3rem;"></i>
+                                <h5>SSH Key Analysis</h5>
+                                <p class="text-muted">See how the tool analyzes SSH keys for security issues, including algorithm strength, permissions, and passphrase protection.</p>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="text-center">
+                                <i class="fas fa-chart-pie text-success mb-3" style="font-size: 3rem;"></i>
+                                <h5>Risk Visualization</h5>
+                                <p class="text-muted">Interactive charts showing risk distribution, secret locations, and system security posture with color-coded indicators.</p>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="text-center">
+                                <i class="fas fa-lightbulb text-warning mb-3" style="font-size: 3rem;"></i>
+                                <h5>Actionable Insights</h5>
+                                <p class="text-muted">Detailed findings and prioritized recommendations tailored to each environment's specific security challenges.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Call to Action -->
+    <div class="text-center mt-5">
+        <div class="card bg-light">
+            <div class="card-body p-5">
+                <h3 class="mb-4">Ready to Try an Example?</h3>
+                <p class="lead mb-4">Choose an environment that matches your organization or try them all to see the differences.</p>
+                <div class="d-flex justify-content-center gap-3 flex-wrap">
+                    <a href="{{ url_for('start_assessment') }}" class="btn btn-primary btn-lg">
+                        <i class="fas fa-rocket me-2"></i>
+                        Start Assessment
+                    </a>
+                    <a href="{{ url_for('index') }}" class="btn btn-outline-primary btn-lg">
+                        <i class="fas fa-home me-2"></i>
+                        Back to Home
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.example-card {
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.example-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 8px 16px rgba(0,0,0,0.15);
+}
+
+.metric-mini {
+    text-align: center;
+    padding: 0.5rem;
+    background: #f8f9fa;
+    border-radius: 8px;
+}
+
+.metric-value-mini {
+    display: block;
+    font-size: 1.5rem;
+    font-weight: bold;
+    color: var(--primary-color);
+}
+
+.metric-label-mini {
+    font-size: 0.8rem;
+    color: #6c757d;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.badge.small {
+    font-size: 0.7rem;
+}
+</style>
+{% endblock %}

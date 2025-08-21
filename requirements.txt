@@ -3,8 +3,11 @@
 # Cryptography library for SSH key analysis
 cryptography>=3.4.8
 
+# Web application framework (for webapp version)
+Flask>=2.3.0
+
 # No other external dependencies required!
-# The tool is designed to work with Python standard library for maximum compatibility.
+# The CLI tool is designed to work with Python standard library for maximum compatibility.
 
 # Optional: For enhanced terminal output (if desired)
 # colorama>=0.4.4  # Cross-platform colored terminal output

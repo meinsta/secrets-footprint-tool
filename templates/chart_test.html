@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chart Test - Secrets Footprint Assessment</title>
+    
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <style>
+        body {
+            background-color: #f8f9fa;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        .metric-card {
+            text-align: center;
+            padding: 2rem;
+        }
+        .metric-value {
+            font-size: 3rem;
+            font-weight: bold;
+            color: #667eea;
+            display: block;
+        }
+        .metric-label {
+            font-size: 0.9rem;
+            color: #6c757d;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container mt-4">
+        <h1 class="text-center mb-5">🔍 Chart Testing - Secrets Footprint Assessment</h1>
+        
+        <!-- Key Metrics -->
+        <div class="row g-4 mb-5">
+            <div class="col-md-3 col-sm-6">
+                <div class="card metric-card">
+                    <div class="card-body">
+                        <span class="metric-value">{{ assessment.total_secrets }}</span>
+                        <span class="metric-label">Total Secrets</span>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3 col-sm-6">
+                <div class="card metric-card">
+                    <div class="card-body">
+                        <span class="metric-value">{{ "%.1f"|format(assessment.overall_risk_score) }}</span>
+                        <span class="metric-label">Risk Score</span>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3 col-sm-6">
+                <div class="card metric-card">
+                    <div class="card-body">
+                        <span class="metric-value">{{ assessment.assessed_systems|length }}</span>
+                        <span class="metric-label">Systems</span>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3 col-sm-6">
+                <div class="card metric-card">
+                    <div class="card-body">
+                        <span class="metric-value">{{ assessment.critical_findings|length }}</span>
+                        <span class="metric-label">Critical Issues</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Charts -->
+        <div class="row g-4 mb-5">
+            <div class="col-lg-4">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">Overall Risk Score</h5>
+                    </div>
+                    <div class="card-body">
+                        <div style="position: relative; height: 250px;">
+                            <canvas id="riskGauge"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-4">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">Risk Distribution</h5>
+                    </div>
+                    <div class="card-body">
+                        <div style="position: relative; height: 250px;">
+                            <canvas id="riskDistChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-4">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">Secrets by Location</h5>
+                    </div>
+                    <div class="card-body">
+                        <div style="position: relative; height: 250px;">
+                            <canvas id="locationChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Raw Data -->
+        <div class="row mb-5">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">Raw Chart Data (for debugging)</h5>
+                    </div>
+                    <div class="card-body">
+                        <pre id="rawData" style="font-size: 0.8rem;"></pre>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Chart Data -->
+    <script id="chartData" type="application/json">
+    {
+        "overall_risk_score": {{ assessment.overall_risk_score }},
+        "risk_distribution": {{ stats.risk_counts|tojson if stats else {} }},
+        "secrets_by_location": {{ assessment_dict.secrets_by_location|tojson }},
+        "secrets_by_type": {{ assessment_dict.secrets_by_type|tojson }}
+    }
+    </script>
+
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const chartData = JSON.parse(document.getElementById('chartData').textContent);
+        
+        // Show raw data for debugging
+        document.getElementById('rawData').textContent = JSON.stringify(chartData, null, 2);
+        
+        console.log('Chart data:', chartData);
+        
+        // Create charts
+        createRiskGauge(chartData.overall_risk_score);
+        createRiskDistributionChart(chartData.risk_distribution);
+        createLocationChart(chartData.secrets_by_location);
+    });
+
+    function createRiskGauge(riskScore) {
+        const ctx = document.getElementById('riskGauge').getContext('2d');
+        
+        let gaugeColor;
+        if (riskScore >= 8.0) {
+            gaugeColor = '#dc3545';  // Critical
+        } else if (riskScore >= 6.0) {
+            gaugeColor = '#fd7e14';  // High
+        } else if (riskScore >= 4.0) {
+            gaugeColor = '#ffc107';  // Medium
+        } else {
+            gaugeColor = '#28a745';  // Low
+        }
+        
+        new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                datasets: [{
+                    data: [riskScore, 10 - riskScore],
+                    backgroundColor: [gaugeColor, '#e9ecef'],
+                    borderWidth: 0,
+                    cutout: '70%'
+                }]
+            },
+            options: {
+                plugins: {
+                    legend: { display: false }
+                },
+                responsive: true,
+                maintainAspectRatio: false
+            }
+        });
+    }
+
+    function createRiskDistributionChart(riskData) {
+        const ctx = document.getElementById('riskDistChart').getContext('2d');
+        
+        const labels = [];
+        const data = [];
+        const colors = [];
+        
+        const riskLevels = {
+            'critical': { label: 'Critical', color: '#dc3545' },
+            'high': { label: 'High', color: '#fd7e14' },
+            'medium': { label: 'Medium', color: '#ffc107' },
+            'low': { label: 'Low', color: '#20c997' },
+            'very_low': { label: 'Very Low', color: '#28a745' }
+        };
+        
+        // Handle both string and numeric keys
+        for (const [level, count] of Object.entries(riskData)) {
+            if (count > 0) {
+                let riskLevel = riskLevels[level];
+                if (!riskLevel) {
+                    const numericMapping = {
+                        '5': riskLevels['critical'],
+                        '4': riskLevels['high'], 
+                        '3': riskLevels['medium'],
+                        '2': riskLevels['low'],
+                        '1': riskLevels['very_low']
+                    };
+                    riskLevel = numericMapping[level];
+                }
+                
+                if (riskLevel) {
+                    labels.push(riskLevel.label);
+                    data.push(count);
+                    colors.push(riskLevel.color);
+                }
+            }
+        }
+        
+        if (labels.length === 0) {
+            labels.push('No Data');
+            data.push(1);
+            colors.push('#e9ecef');
+        }
+        
+        new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels: labels,
+                datasets: [{
+                    data: data,
+                    backgroundColor: colors
+                }]
+            },
+            options: {
+                plugins: {
+                    legend: { position: 'bottom' }
+                },
+                responsive: true,
+                maintainAspectRatio: false
+            }
+        });
+    }
+
+    function createLocationChart(locationData) {
+        const ctx = document.getElementById('locationChart').getContext('2d');
+        
+        const labels = [];
+        const data = [];
+        const colors = [];
+        
+        const locationColors = {
+            'git_repository': '#dc3545',
+            'configuration_file': '#fd7e14',
+            'container_image': '#fd7e14',
+            'local_filesystem': '#ffc107',
+            'environment_variables': '#ffc107',
+            'database': '#20c997',
+            'ci_cd_variables': '#28a745',
+            'cloud_secret_manager': '#198754'
+        };
+        
+        for (const [location, count] of Object.entries(locationData)) {
+            if (count > 0) {
+                const displayName = location.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                labels.push(displayName);
+                data.push(count);
+                colors.push(locationColors[location] || '#6c757d');
+            }
+        }
+        
+        if (labels.length === 0) {
+            labels.push('No Secrets Found');
+            data.push(0);
+            colors.push('#e9ecef');
+        }
+        
+        new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [{
+                    data: data,
+                    backgroundColor: colors,
+                    borderColor: colors.map(color => color + 'CC'),
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                indexAxis: 'y',
+                plugins: {
+                    legend: { display: false }
+                },
+                scales: {
+                    x: {
+                        beginAtZero: true,
+                        ticks: { stepSize: 1 }
+                    }
+                },
+                responsive: true,
+                maintainAspectRatio: false
+            }
+        });
+    }
+    </script>
+</body>
+</html>

@@ -1,0 +1,513 @@
+{% extends "base.html" %}
+
+{% block title %}Assessment Results - Secrets Footprint Assessment Tool{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <!-- Progress Steps -->
+    <div class="step-indicator mb-4">
+        <div class="step completed">
+            <div class="step-number">1</div>
+            Setup
+        </div>
+        <div class="step-connector"></div>
+        <div class="step completed">
+            <div class="step-number">2</div>
+            SSH Analysis
+        </div>
+        <div class="step-connector"></div>
+        <div class="step completed">
+            <div class="step-number">3</div>
+            Systems
+        </div>
+        <div class="step-connector"></div>
+        <div class="step active">
+            <div class="step-number">4</div>
+            Results
+        </div>
+    </div>
+
+    <!-- Header -->
+    <div class="text-center mb-5">
+        <h1 class="display-5 fw-bold">
+            <i class="fas fa-chart-line text-primary me-3"></i>
+            Assessment Results
+        </h1>
+        <p class="lead text-muted">
+            Your secrets footprint security analysis is complete
+        </p>
+    </div>
+
+    <!-- Overall Risk Score -->
+    <div class="row justify-content-center mb-5">
+        <div class="col-lg-6">
+            <div class="card text-center">
+                <div class="card-body p-5">
+                    <h3 class="card-title mb-4">Overall Risk Score</h3>
+                    <div class="position-relative d-inline-block">
+                        <canvas id="riskGauge" width="200" height="200"></canvas>
+                        <div class="position-absolute top-50 start-50 translate-middle">
+                            <span class="display-4 fw-bold risk-score-text">{{ "%.1f"|format(assessment.overall_risk_score) }}</span>
+                            <div class="small text-muted">out of 10</div>
+                        </div>
+                    </div>
+                    <div class="mt-3">
+                        {% set risk_level = "CRITICAL" if assessment.overall_risk_score >= 8.0 else "HIGH" if assessment.overall_risk_score >= 6.0 else "MEDIUM" if assessment.overall_risk_score >= 4.0 else "LOW" %}
+                        {% set risk_class = "danger" if risk_level == "CRITICAL" else "warning" if risk_level == "HIGH" else "info" if risk_level == "MEDIUM" else "success" %}
+                        <h4 class="text-{{ risk_class }}">{{ risk_level }} RISK</h4>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Key Metrics -->
+    <div class="row g-4 mb-5">
+        <div class="col-md-3 col-sm-6">
+            <div class="card metric-card">
+                <div class="card-body">
+                    <span class="metric-value">{{ assessment.total_secrets }}</span>
+                    <span class="metric-label">Total Secrets</span>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3 col-sm-6">
+            <div class="card metric-card">
+                <div class="card-body">
+                    <span class="metric-value">{{ assessment.assessed_systems|length }}</span>
+                    <span class="metric-label">Systems Assessed</span>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3 col-sm-6">
+            <div class="card metric-card">
+                <div class="card-body">
+                    <span class="metric-value">{{ assessment.critical_findings|length }}</span>
+                    <span class="metric-label">Critical Findings</span>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3 col-sm-6">
+            <div class="card metric-card">
+                <div class="card-body">
+                    <span class="metric-value">{{ assessment.recommendations|length }}</span>
+                    <span class="metric-label">Recommendations</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Risk Distribution and Charts -->
+    <div class="row g-4 mb-5">
+        <div class="col-lg-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-chart-pie me-2"></i>
+                        Risk Distribution
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <canvas id="riskDistChart" height="300"></canvas>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-map-marker-alt me-2"></i>
+                        Secrets by Location
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <canvas id="locationChart" height="300"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Systems Overview -->
+    {% if assessment.assessed_systems %}
+    <div class="row mb-5">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-server me-2"></i>
+                        Systems Overview
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>System</th>
+                                    <th>Type</th>
+                                    <th>Risk Score</th>
+                                    <th>Secrets</th>
+                                    <th>Security Features</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for system in assessment.assessed_systems|sort(attribute='risk_score', reverse=true) %}
+                                <tr class="{% if system.risk_score >= 4 %}table-danger{% elif system.risk_score >= 3 %}table-warning{% else %}table-success{% endif %}">
+                                    <td><strong>{{ system.name }}</strong></td>
+                                    <td><span class="badge bg-secondary">{{ system.type.replace('_', ' ').title() }}</span></td>
+                                    <td>
+                                        <span class="fw-bold">{{ system.risk_score }}/5</span>
+                                        {% if system.risk_score >= 4 %}
+                                        <i class="fas fa-exclamation-triangle text-danger ms-1"></i>
+                                        {% elif system.risk_score >= 3 %}
+                                        <i class="fas fa-exclamation-circle text-warning ms-1"></i>
+                                        {% else %}
+                                        <i class="fas fa-check-circle text-success ms-1"></i>
+                                        {% endif %}
+                                    </td>
+                                    <td>{{ system.secrets_count }}</td>
+                                    <td>
+                                        <div class="d-flex gap-1">
+                                            {% if system.encryption_enabled %}
+                                            <span class="badge bg-success" title="Encryption Enabled">🔐</span>
+                                            {% endif %}
+                                            {% if system.audit_logging %}
+                                            <span class="badge bg-info" title="Audit Logging">📋</span>
+                                            {% endif %}
+                                            {% if system.auto_rotation %}
+                                            <span class="badge bg-primary" title="Auto Rotation">🔄</span>
+                                            {% endif %}
+                                            {% if system.access_controls %}
+                                            <span class="badge bg-warning" title="Access Controls">🛡️</span>
+                                            {% endif %}
+                                            {% if not (system.encryption_enabled or system.audit_logging or system.auto_rotation or system.access_controls) %}
+                                            <span class="text-muted">No features</span>
+                                            {% endif %}
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Critical Findings -->
+    {% if assessment.critical_findings %}
+    <div class="row mb-5">
+        <div class="col-12">
+            <div class="card border-danger">
+                <div class="card-header bg-danger text-white">
+                    <h5 class="mb-0">
+                        <i class="fas fa-exclamation-triangle me-2"></i>
+                        Critical Findings ({{ assessment.critical_findings|length }})
+                    </h5>
+                </div>
+                <div class="card-body">
+                    {% for finding in assessment.critical_findings %}
+                    <div class="finding risk-critical">
+                        <strong>{{ loop.index }}.</strong> {{ finding|replace('🚨', '')|replace('⚠️', '')|replace('🔓', '')|replace('⏰', '') }}
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Recommendations -->
+    {% if assessment.recommendations %}
+    <div class="row mb-5">
+        <div class="col-12">
+            <div class="card border-info">
+                <div class="card-header bg-info text-white">
+                    <h5 class="mb-0">
+                        <i class="fas fa-lightbulb me-2"></i>
+                        Security Recommendations ({{ assessment.recommendations|length }})
+                    </h5>
+                </div>
+                <div class="card-body">
+                    {% for rec in assessment.recommendations %}
+                    <div class="recommendation">
+                        <strong>{{ loop.index }}.</strong> {{ rec|replace('🚨', '')|replace('📝', '')|replace('🔐', '')|replace('🔄', '')|replace('📡', '')|replace('🎯', '') }}
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Action Buttons -->
+    <div class="row mb-5">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-download me-2"></i>
+                        Export Reports
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row g-3">
+                        <div class="col-md-4">
+                            <div class="d-grid">
+                                <a href="/api/generate-report/html" class="btn btn-primary">
+                                    <i class="fas fa-file-code me-2"></i>
+                                    Download HTML Report
+                                </a>
+                                <small class="text-muted mt-1">Detailed technical report</small>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="d-grid">
+                                <a href="/api/generate-report/executive" class="btn btn-outline-primary">
+                                    <i class="fas fa-file-text me-2"></i>
+                                    Executive Summary
+                                </a>
+                                <small class="text-muted mt-1">Management-friendly report</small>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="d-grid">
+                                <a href="/api/generate-report/json" class="btn btn-outline-secondary">
+                                    <i class="fas fa-file-code me-2"></i>
+                                    Download JSON Data
+                                </a>
+                                <small class="text-muted mt-1">Raw data for integration</small>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="text-center mt-4">
+                        <a href="{{ url_for('start_assessment') }}" class="btn btn-success me-3">
+                            <i class="fas fa-redo me-2"></i>
+                            Start New Assessment
+                        </a>
+                        <a href="{{ url_for('index') }}" class="btn btn-outline-secondary">
+                            <i class="fas fa-home me-2"></i>
+                            Back to Home
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Hidden data for charts -->
+<script id="chartData" type="application/json">
+{
+    "overall_risk_score": {{ assessment.overall_risk_score }},
+    "risk_distribution": {{ stats.risk_counts|tojson if stats else {} }},
+    "secrets_by_location": {{ assessment_dict.secrets_by_location|tojson }},
+    "secrets_by_type": {{ assessment_dict.secrets_by_type|tojson }}
+}
+</script>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const chartData = JSON.parse(document.getElementById('chartData').textContent);
+    console.log('Chart data:', chartData); // Debug logging
+    
+    // Risk Gauge Chart
+    createRiskGauge(chartData.overall_risk_score);
+    
+    // Risk Distribution Chart
+    createRiskDistributionChart(chartData.risk_distribution);
+    
+    // Location Chart
+    createLocationChart(chartData.secrets_by_location);
+});
+
+function createRiskGauge(riskScore) {
+    const ctx = document.getElementById('riskGauge').getContext('2d');
+    
+    // Determine colors based on risk score
+    let gaugeColor, backgroundColor;
+    if (riskScore >= 8.0) {
+        gaugeColor = '#dc3545';  // Critical - red
+        backgroundColor = '#ffebee';
+    } else if (riskScore >= 6.0) {
+        gaugeColor = '#fd7e14';  // High - orange
+        backgroundColor = '#fff3e0';
+    } else if (riskScore >= 4.0) {
+        gaugeColor = '#ffc107';  // Medium - yellow
+        backgroundColor = '#fffde7';
+    } else {
+        gaugeColor = '#28a745';  // Low - green
+        backgroundColor = '#e8f5e8';
+    }
+    
+    new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            datasets: [{
+                data: [riskScore, 10 - riskScore],
+                backgroundColor: [gaugeColor, '#e9ecef'],
+                borderWidth: 0,
+                cutout: '75%'
+            }]
+        },
+        options: {
+            plugins: {
+                legend: {
+                    display: false
+                }
+            },
+            maintainAspectRatio: false
+        }
+    });
+}
+
+function createRiskDistributionChart(riskData) {
+    const ctx = document.getElementById('riskDistChart').getContext('2d');
+    
+    const labels = [];
+    const data = [];
+    const colors = [];
+    
+    // Map risk levels to display names and colors
+    const riskLevels = {
+        'critical': { label: 'Critical', color: '#dc3545' },
+        'high': { label: 'High', color: '#fd7e14' },
+        'medium': { label: 'Medium', color: '#ffc107' },
+        'low': { label: 'Low', color: '#20c997' },
+        'very_low': { label: 'Very Low', color: '#28a745' }
+    };
+    
+    // Handle both numeric and string keys
+    for (const [level, count] of Object.entries(riskData)) {
+        if (count > 0) {
+            let riskLevel = riskLevels[level];
+            // Also try numeric mapping
+            if (!riskLevel) {
+                const numericMapping = {
+                    '5': riskLevels['critical'],
+                    '4': riskLevels['high'], 
+                    '3': riskLevels['medium'],
+                    '2': riskLevels['low'],
+                    '1': riskLevels['very_low']
+                };
+                riskLevel = numericMapping[level];
+            }
+            
+            if (riskLevel) {
+                labels.push(riskLevel.label);
+                data.push(count);
+                colors.push(riskLevel.color);
+            }
+        }
+    }
+    
+    // If no data, show a placeholder
+    if (labels.length === 0) {
+        labels.push('No Data');
+        data.push(1);
+        colors.push('#e9ecef');
+    }
+    
+    new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: labels,
+            datasets: [{
+                data: data,
+                backgroundColor: colors,
+                hoverBackgroundColor: colors.map(color => color + 'CC')
+            }]
+        },
+        options: {
+            plugins: {
+                legend: {
+                    position: 'bottom'
+                }
+            },
+            maintainAspectRatio: false,
+            responsive: true
+        }
+    });
+}
+
+function createLocationChart(locationData) {
+    const ctx = document.getElementById('locationChart').getContext('2d');
+    
+    const labels = [];
+    const data = [];
+    const colors = [];
+    
+    // Location colors based on risk
+    const locationColors = {
+        'git_repository': '#dc3545',
+        'configuration_file': '#fd7e14',
+        'container_image': '#fd7e14',
+        'local_filesystem': '#ffc107',
+        'environment_variables': '#ffc107',
+        'database': '#20c997',
+        'ci_cd_variables': '#28a745',
+        'cloud_secret_manager': '#198754'
+    };
+    
+    for (const [location, count] of Object.entries(locationData)) {
+        if (count > 0) {
+            const displayName = location.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+            labels.push(displayName);
+            data.push(count);
+            colors.push(locationColors[location] || '#6c757d');
+        }
+    }
+    
+    // If no data, show a placeholder
+    if (labels.length === 0) {
+        labels.push('No Secrets Found');
+        data.push(0);
+        colors.push('#e9ecef');
+    }
+    
+    new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: labels,
+            datasets: [{
+                data: data,
+                backgroundColor: colors,
+                borderColor: colors.map(color => color + 'CC'),
+                borderWidth: 1
+            }]
+        },
+        options: {
+            indexAxis: 'y', // This makes it horizontal
+            plugins: {
+                legend: {
+                    display: false
+                }
+            },
+            scales: {
+                x: {
+                    beginAtZero: true,
+                    ticks: {
+                        stepSize: 1
+                    }
+                }
+            },
+            maintainAspectRatio: false,
+            responsive: true
+        }
+    });
+}
+
+// Add tooltip for security feature badges
+document.addEventListener('DOMContentLoaded', function() {
+    const tooltipTriggerList = [].slice.call(document.querySelectorAll('[title]'));
+    tooltipTriggerList.map(function (tooltipTriggerEl) {
+        return new bootstrap.Tooltip(tooltipTriggerEl);
+    });
+});
+</script>
+{% endblock %}
