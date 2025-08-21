@@ -1,0 +1,17 @@
+# Secrets Footprint Assessment Tool - Dependencies
+
+# Cryptography library for SSH key analysis
+cryptography>=3.4.8
+
+# No other external dependencies required!
+# The tool is designed to work with Python standard library for maximum compatibility.
+
+# Optional: For enhanced terminal output (if desired)
+# colorama>=0.4.4  # Cross-platform colored terminal output
+# rich>=10.0.0     # Rich text and beautiful formatting in terminal
+
+# Development dependencies (uncomment if needed for development)
+# pytest>=6.0.0
+# black>=21.0.0
+# flake8>=3.8.0
+# mypy>=0.800
