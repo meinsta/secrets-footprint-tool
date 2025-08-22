@@ -1,0 +1,311 @@
+version: '3.8'
+
+# Secure Docker Compose for Secrets Assessment Tool with Teleport
+# This configuration provides enterprise-grade security with complete audit trails
+
+networks:
+  teleport-net:
+    driver: bridge
+    ipam:
+      config:
+      - subnet: 172.20.0.0/24
+    labels:
+      - "com.security.purpose=teleport-access"
+  
+  assessment-net:
+    driver: bridge
+    internal: true  # No external internet access
+    ipam:
+      config:
+      - subnet: 172.21.0.0/24
+    labels:
+      - "com.security.purpose=assessment-isolation"
+
+volumes:
+  teleport-data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./volumes/teleport-data
+  teleport-certs:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind  
+      device: ./volumes/teleport-certs
+  assessment-data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./volumes/assessment-data
+  audit-logs:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./volumes/audit-logs
+
+services:
+  # Teleport Auth Server - Certificate Authority and User Management
+  teleport-auth:
+    image: public.ecr.aws/gravitational/teleport:13
+    container_name: teleport-auth
+    hostname: teleport-auth
+    networks:
+      - teleport-net
+    volumes:
+      - teleport-data:/var/lib/teleport:rw
+      - teleport-certs:/etc/teleport/certs:rw
+      - ./config/teleport-auth.yaml:/etc/teleport/teleport.yaml:ro
+      - audit-logs:/var/lib/teleport/log:rw
+    ports:
+      - "3025:3025"  # Auth server port
+    command: ["teleport", "start", "--config=/etc/teleport/teleport.yaml"]
+    environment:
+      - TELEPORT_CLUSTER_NAME=secrets-assessment
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3025/readyz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    user: "1000:1000"
+    labels:
+      - "com.security.component=teleport-auth"
+      - "com.security.criticality=high"
+
+  # Teleport Proxy - Public facing HTTPS endpoint  
+  teleport-proxy:
+    image: public.ecr.aws/gravitational/teleport:13
+    container_name: teleport-proxy
+    hostname: teleport-proxy
+    networks:
+      - teleport-net
+    volumes:
+      - teleport-certs:/etc/teleport/certs:ro
+      - ./config/teleport-proxy.yaml:/etc/teleport/teleport.yaml:ro
+      - ./ssl/:/etc/ssl/certs/:ro
+    ports:
+      - "443:3080"   # HTTPS Web UI and API
+      - "3023:3023"  # SSH port
+      - "3024:3024"  # Teleport tunnel
+    command: ["teleport", "start", "--config=/etc/teleport/teleport.yaml"]
+    environment:
+      - TELEPORT_AUTH_SERVER=teleport-auth:3025
+    depends_on:
+      - teleport-auth
+    healthcheck:
+      test: ["CMD", "curl", "-f", "-k", "https://localhost:3080/readyz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    user: "1000:1000"
+    labels:
+      - "com.security.component=teleport-proxy"
+      - "com.security.criticality=high"
+      - "traefik.enable=true"
+      - "traefik.http.routers.teleport.rule=Host(`assessment.company.com`)"
+      - "traefik.http.routers.teleport.tls=true"
+
+  # Secrets Assessment Tool - Hardened Application Container
+  assessment-tool:
+    build:
+      context: ../../
+      dockerfile: ./deployment/docker/Dockerfile.secure
+    container_name: secrets-assessment-tool
+    hostname: assessment-tool
+    networks:
+      - assessment-net
+      - teleport-net
+    volumes:
+      - assessment-data:/app/data:rw
+      - audit-logs:/app/logs:rw
+      - ./config/app-config.yaml:/app/config.yaml:ro
+    ports:
+      - "127.0.0.1:5000:5000"  # Localhost only - accessed via Teleport
+    environment:
+      - FLASK_ENV=production
+      - FLASK_DEBUG=false
+      - SECURITY_LEVEL=high
+      - AUDIT_LOGGING=enabled
+      - SESSION_TIMEOUT=7200  # 2 hours
+    user: "1001:1001"  # Non-root user
+    read_only: true    # Read-only root filesystem
+    tmpfs:
+      - /tmp:noexec,nosuid,size=100M
+      - /app/temp:noexec,nosuid,size=50M
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - DAC_OVERRIDE  # Only capability needed
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    depends_on:
+      - teleport-auth
+    labels:
+      - "com.security.component=assessment-tool"
+      - "com.security.criticality=medium"
+      - "teleport.app.name=secrets-footprint"
+      - "teleport.app.uri=http://localhost:5000"
+
+  # Teleport Node - Connects assessment tool to Teleport cluster
+  teleport-node:
+    image: public.ecr.aws/gravitational/teleport:13
+    container_name: teleport-node
+    hostname: assessment-node
+    networks:
+      - teleport-net
+      - assessment-net
+    volumes:
+      - ./config/teleport-node.yaml:/etc/teleport/teleport.yaml:ro
+      - teleport-certs:/etc/teleport/certs:ro
+      - assessment-data:/app/data:ro
+    command: ["teleport", "start", "--config=/etc/teleport/teleport.yaml"]
+    environment:
+      - TELEPORT_AUTH_SERVER=teleport-auth:3025
+      - TELEPORT_NODE_NAME=assessment-node
+    depends_on:
+      - teleport-auth
+      - assessment-tool
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    user: "1000:1000"
+    restart: unless-stopped
+    labels:
+      - "com.security.component=teleport-node"
+      - "com.security.criticality=medium"
+
+  # Security Monitoring - Prometheus for metrics
+  prometheus:
+    image: prom/prometheus:v2.40.0
+    container_name: prometheus
+    hostname: prometheus
+    networks:
+      - teleport-net
+    volumes:
+      - ./config/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./config/alert-rules.yml:/etc/prometheus/alert-rules.yml:ro
+      - prometheus-data:/prometheus:rw
+    ports:
+      - "127.0.0.1:9090:9090"
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+      - '--web.enable-lifecycle'
+      - '--web.enable-admin-api'
+    user: "nobody:nobody"
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    restart: unless-stopped
+    labels:
+      - "com.security.component=monitoring"
+      - "com.security.criticality=low"
+
+  # Log Aggregation - Fluent Bit for log forwarding
+  fluent-bit:
+    image: fluent/fluent-bit:2.0
+    container_name: fluent-bit
+    networks:
+      - teleport-net
+    volumes:
+      - ./config/fluent-bit.conf:/fluent-bit/etc/fluent-bit.conf:ro
+      - audit-logs:/var/log/audit:ro
+      - /var/log:/var/log:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    user: "root"  # Needs root to read log files
+    restart: unless-stopped
+    labels:
+      - "com.security.component=log-aggregation"
+      - "com.security.criticality=medium"
+
+  # Backup Service - Automated encrypted backups
+  backup-service:
+    build:
+      context: ./backup/
+      dockerfile: Dockerfile
+    container_name: backup-service
+    networks:
+      - assessment-net
+    volumes:
+      - assessment-data:/backup/source:ro
+      - ./volumes/backups:/backup/destination:rw
+      - ./config/backup-config.yaml:/backup/config.yaml:ro
+    environment:
+      - BACKUP_SCHEDULE=0 2 * * *  # Daily at 2 AM
+      - ENCRYPTION_ENABLED=true
+      - RETENTION_DAYS=30
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    user: "1002:1002"
+    restart: unless-stopped
+    labels:
+      - "com.security.component=backup"
+      - "com.security.criticality=medium"
+
+volumes:
+  prometheus-data:
+    driver: local
+
+# Health check and dependency management
+x-healthcheck-common: &healthcheck-common
+  interval: 30s
+  timeout: 10s
+  retries: 3
+  start_period: 30s
+
+# Common security settings
+x-security-common: &security-common
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+  read_only: true
+  tmpfs:
+    - /tmp:noexec,nosuid,size=50M
+
+# Resource limits for all containers
+x-resources-common: &resources-common
+  deploy:
+    resources:
+      limits:
+        cpus: '1.0'
+        memory: 512M
+      reservations:
+        cpus: '0.1'
+        memory: 64M
