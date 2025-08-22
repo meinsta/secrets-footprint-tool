@@ -1,0 +1,292 @@
+#cloud-config
+
+# Teleport Bootstrap-to-Keyless Deployment
+# Uses temporary SSH for initial setup, then switches to certificate-only access
+# This follows Teleport's recommended security pattern
+
+users:
+  - name: bootstrap
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    shell: /bin/bash
+    # Temporary SSH key - will be disabled after Teleport setup
+    ssh_authorized_keys:
+      - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJN+X5Hmb4SuEW7uGubtWmCOA56175U8L0GxYAHS0/Ki secrets-assessment-bootstrap-temp
+  - name: assessment
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    shell: /bin/bash
+    lock_passwd: true
+    ssh_authorized_keys: []  # No SSH keys for production user
+
+package_update: true
+package_upgrade: true
+
+packages:
+  - docker.io
+  - docker-compose
+  - curl
+  - jq
+  - git
+  - unzip
+  - ufw
+
+write_files:
+  # Bootstrap completion script - disables SSH after Teleport is running
+  - path: /opt/bootstrap/complete-bootstrap.sh
+    permissions: '0755'
+    content: |
+      #!/bin/bash
+      set -euo pipefail
+      
+      log_info() { echo "[$(date)] INFO: $1"; }
+      log_success() { echo "[$(date)] SUCCESS: $1"; }
+      
+      log_info "Completing bootstrap - switching to certificate-only access..."
+      
+      # Wait for Teleport to be fully operational
+      max_attempts=30
+      attempt=1
+      
+      while [[ $attempt -le $max_attempts ]]; do
+          if tctl status >/dev/null 2>&1; then
+              log_success "Teleport is operational"
+              break
+          fi
+          log_info "Waiting for Teleport... (attempt $attempt/$max_attempts)"
+          sleep 10
+          ((attempt++))
+      done
+      
+      if [[ $attempt -gt $max_attempts ]]; then
+          echo "ERROR: Teleport failed to start properly"
+          exit 1
+      fi
+      
+      # Create admin user for certificate-based access
+      ADMIN_INVITE=$(tctl users add admin security-admin --logins=assessment --ttl=24h)
+      
+      # Disable SSH access completely
+      log_info "Disabling SSH access..."
+      systemctl stop ssh
+      systemctl disable ssh
+      
+      # Remove bootstrap user's SSH keys
+      rm -f /home/bootstrap/.ssh/authorized_keys
+      
+      # Lock down SSH config
+      cat > /etc/ssh/sshd_config.disabled << 'SSH_EOF'
+      # SSH DISABLED - Access via Teleport certificate-based authentication only
+      # This file has been renamed to prevent SSH from starting
+      Port 22
+      PasswordAuthentication no
+      ChallengeResponseAuthentication no
+      UsePAM no
+      X11Forwarding no
+      PrintMotd no
+      AcceptEnv LANG LC_*
+      AllowUsers NONE_ALLOWED
+      SSH_EOF
+      
+      # Configure firewall to block SSH
+      ufw --force reset
+      ufw default deny incoming
+      ufw default allow outgoing
+      
+      # Allow only Teleport ports
+      ufw allow 3023/tcp   # Teleport SSH Proxy
+      ufw allow 3080/tcp   # Teleport Web UI
+      ufw allow 8080/tcp   # Assessment Portal
+      
+      # Explicitly deny SSH
+      ufw deny 22/tcp
+      
+      ufw --force enable
+      
+      log_success "Bootstrap completed successfully!"
+      echo ""
+      echo "=============================================="
+      echo "🎉 KEYLESS DEPLOYMENT COMPLETED!"
+      echo "=============================================="
+      echo ""
+      echo "🔒 Security Status:"
+      echo "   ✅ SSH access DISABLED"
+      echo "   ✅ Certificate-based auth ENABLED"
+      echo "   ✅ Firewall protecting Teleport ports only"
+      echo ""
+      echo "🌐 Access Information:"
+      echo "   Web UI: https://$(curl -s http://checkip.amazonaws.com/):3080"
+      echo "   Portal: http://$(curl -s http://checkip.amazonaws.com/):8080"
+      echo ""
+      echo "🔐 Admin Setup (expires in 24h):"
+      echo "$ADMIN_INVITE"
+      echo ""
+      echo "📱 Next Steps:"
+      echo "1. Save the admin invite link above"
+      echo "2. Access the web UI (accept SSL warning)"
+      echo "3. Complete MFA setup"
+      echo "4. Add additional users as needed"
+      echo ""
+      echo "⚡ SSH is now PERMANENTLY DISABLED"
+      echo "   All future access via Teleport certificates only!"
+      echo "=============================================="
+
+  # Get server IP utility
+  - path: /opt/bootstrap/get-server-ip.sh
+    permissions: '0755'
+    content: |
+      #!/bin/bash
+      PUBLIC_IP=$(curl -s http://checkip.amazonaws.com/ || curl -s https://ipinfo.io/ip || curl -s https://api.ipify.org)
+      echo "$PUBLIC_IP" > /opt/bootstrap/server-ip.txt
+      echo "Server IP: $PUBLIC_IP"
+
+  # Teleport configuration for certificate-only access
+  - path: /opt/teleport/teleport.yaml
+    permissions: '0600'
+    owner: assessment:assessment
+    content: |
+      version: v3
+      teleport:
+        cluster_name: secrets-assessment-bootstrap
+        data_dir: /var/lib/teleport
+        log:
+          output: stderr
+          severity: INFO
+      
+      auth_service:
+        enabled: true
+        cluster_name: secrets-assessment-bootstrap
+        listen_addr: 0.0.0.0:3025
+        
+        # Certificate-based authentication only
+        authentication:
+          type: local
+          second_factor: otp  # TOTP via Google Authenticator
+          require_session_mfa: true
+          
+        # Strong session settings
+        session_recording: node-sync
+        session_control_timeout: 30s
+        client_idle_timeout: 2h
+        disconnect_expired_cert: true
+        
+        # Enhanced security
+        cluster_networking_config:
+          client_idle_timeout: 1h
+          session_control_timeout: 2h
+        
+      proxy_service:
+        enabled: true
+        web_listen_addr: 0.0.0.0:3080
+        tunnel_listen_addr: 0.0.0.0:3024
+        public_addr: SERVER_IP_PLACEHOLDER:3023
+        
+        # Self-signed certificates (will be replaced with real certs)
+        https_keypairs: []
+        
+      ssh_service:
+        enabled: true
+        listen_addr: 0.0.0.0:3022
+        labels:
+          service: secrets-assessment
+          environment: production
+          auth_method: certificate-only
+          ssh_disabled: "true"
+        
+        # Enhanced session recording
+        enhanced_recording:
+          enabled: true
+          command_buffer_size: 8192
+          disk_buffer_size: 128000000
+          network_buffer_size: 65536
+
+  # Main bootstrap deployment script
+  - path: /opt/bootstrap/deploy-assessment.sh
+    permissions: '0755'
+    content: |
+      #!/bin/bash
+      set -euo pipefail
+      
+      log_info() { echo "[$(date)] INFO: $1"; }
+      
+      log_info "Starting Teleport bootstrap deployment..."
+      
+      # Get server IP and update config
+      /opt/bootstrap/get-server-ip.sh
+      SERVER_IP=$(cat /opt/bootstrap/server-ip.txt)
+      sed -i "s/SERVER_IP_PLACEHOLDER/$SERVER_IP/g" /opt/teleport/teleport.yaml
+      
+      # Create application user and setup
+      useradd -r -s /bin/false -m -d /opt/assessment assessment || true
+      
+      # Clone assessment tool repository
+      cd /opt/assessment
+      git clone https://github.com/meinsta/secrets-footprint-tool.git . || true
+      chown -R assessment:assessment /opt/assessment
+      
+      # Install Teleport
+      cd /tmp
+      curl -O https://cdn.teleport.dev/teleport_14.0.0_amd64.deb
+      dpkg -i teleport_14.0.0_amd64.deb
+      
+      # Setup Teleport systemd service
+      cat > /etc/systemd/system/teleport.service << 'TELEPORT_SERVICE_EOF'
+      [Unit]
+      Description=Teleport Certificate-Based SSH Server
+      After=network.target
+      
+      [Service]
+      Type=simple
+      User=assessment
+      Group=assessment
+      ExecStart=/usr/local/bin/teleport start --config=/opt/teleport/teleport.yaml
+      ExecReload=/bin/kill -HUP $MAINPID
+      PIDFile=/var/lib/teleport/teleport.pid
+      LimitNOFILE=65536
+      
+      # Security hardening
+      NoNewPrivileges=true
+      PrivateTmp=true
+      ProtectSystem=strict
+      ProtectHome=true
+      ReadWritePaths=/var/lib/teleport /var/log/teleport /opt/assessment
+      
+      [Install]
+      WantedBy=multi-user.target
+      TELEPORT_SERVICE_EOF
+      
+      # Setup directories with secure permissions
+      mkdir -p /var/lib/teleport /var/log/teleport
+      chown -R assessment:assessment /var/lib/teleport /var/log/teleport /opt/teleport
+      chmod 700 /var/lib/teleport /var/log/teleport
+      
+      # Start Teleport
+      systemctl daemon-reload
+      systemctl enable teleport
+      systemctl start teleport
+      
+      log_info "Teleport started, waiting for initialization..."
+      sleep 30
+      
+      # Deploy assessment tool containers
+      cd /opt/assessment/deployment/docker
+      docker-compose -f docker-compose.bootstrap-keyless.yml build
+      docker-compose -f docker-compose.bootstrap-keyless.yml up -d
+      
+      log_info "Assessment containers deployed"
+      
+      # Complete the bootstrap process (disable SSH, create admin)
+      sleep 10
+      /opt/bootstrap/complete-bootstrap.sh
+      
+      log_info "Bootstrap deployment completed!"
+
+runcmd:
+  - hostnamectl set-hostname secrets-assessment-bootstrap
+  - usermod -aG docker assessment
+  - usermod -aG docker bootstrap
+  - /opt/bootstrap/deploy-assessment.sh > /var/log/bootstrap.log 2>&1
+
+final_message: |
+  Bootstrap-to-Keyless deployment initiated!
+  SSH will be automatically disabled after Teleport setup.
+  Check logs: tail -f /var/log/bootstrap.log
+  Future access: Certificate-based authentication only!

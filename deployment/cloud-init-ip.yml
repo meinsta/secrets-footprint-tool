@@ -1,0 +1,200 @@
+#cloud-config
+
+# IP-Based Keyless Secrets Assessment Tool
+# No domain required - uses server IP address
+
+users:
+  - name: assessment
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    shell: /bin/bash
+    lock_passwd: true
+    ssh_authorized_keys: []  # No SSH keys needed
+
+package_update: true
+package_upgrade: true
+
+packages:
+  - docker.io
+  - docker-compose
+  - curl
+  - jq
+  - git
+  - unzip
+  - ufw
+
+write_files:
+  # Get server IP script
+  - path: /opt/setup/get-ip.sh
+    permissions: '0755'
+    content: |
+      #!/bin/bash
+      # Get the public IP address
+      PUBLIC_IP=$(curl -s http://checkip.amazonaws.com/ || curl -s https://ipinfo.io/ip || curl -s https://api.ipify.org)
+      echo "$PUBLIC_IP" > /opt/setup/server-ip.txt
+      echo "Server IP: $PUBLIC_IP"
+
+  # Teleport configuration for IP-based access
+  - path: /opt/teleport/teleport.yaml
+    permissions: '0600'
+    owner: assessment:assessment  
+    content: |
+      version: v3
+      teleport:
+        cluster_name: secrets-assessment-ip
+        data_dir: /var/lib/teleport
+        log:
+          output: stderr
+          severity: INFO
+      
+      auth_service:
+        enabled: true
+        cluster_name: secrets-assessment-ip
+        listen_addr: 0.0.0.0:3025
+        
+        # Certificate-based authentication
+        authentication:
+          type: local
+          second_factor: otp  # TOTP (easier setup than hardware keys)
+          require_session_mfa: true
+          
+        # Session settings
+        session_recording: node-sync
+        session_control_timeout: 30s
+        client_idle_timeout: 2h
+        disconnect_expired_cert: true
+        
+      proxy_service:
+        enabled: true
+        web_listen_addr: 0.0.0.0:3080
+        tunnel_listen_addr: 0.0.0.0:3024
+        public_addr: SERVER_IP_PLACEHOLDER:3023
+        
+        # Self-signed certs for IP access
+        https_keypairs: []
+        
+      ssh_service:
+        enabled: true
+        listen_addr: 0.0.0.0:3022
+        labels:
+          service: secrets-assessment
+          environment: production
+          auth_method: certificate-only
+
+  # Firewall for IP-based access
+  - path: /opt/setup/configure-firewall.sh
+    permissions: '0755'
+    content: |
+      #!/bin/bash
+      ufw --force reset
+      ufw default deny incoming
+      ufw default allow outgoing
+      
+      # Allow Teleport ports
+      ufw allow 3023/tcp   # Teleport SSH
+      ufw allow 3080/tcp   # Teleport Web UI  
+      ufw allow 8080/tcp   # Assessment Web Portal
+      
+      ufw --force enable
+      echo "Firewall configured for IP-based access"
+
+  # Main deployment script
+  - path: /opt/setup/deploy-assessment-ip.sh
+    permissions: '0755'
+    content: |
+      #!/bin/bash
+      set -euo pipefail
+      
+      log_info() { echo "[$(date)] INFO: $1"; }
+      
+      log_info "Starting IP-based keyless deployment..."
+      
+      # Get server IP
+      /opt/setup/get-ip.sh
+      SERVER_IP=$(cat /opt/setup/server-ip.txt)
+      
+      # Update Teleport config with actual IP
+      sed -i "s/SERVER_IP_PLACEHOLDER/$SERVER_IP/g" /opt/teleport/teleport.yaml
+      
+      # Create application user
+      useradd -r -s /bin/false -m -d /opt/assessment assessment || true
+      
+      # Clone repository  
+      cd /opt/assessment
+      git clone https://github.com/meinsta/secrets-footprint-tool.git . || true
+      chown -R assessment:assessment /opt/assessment
+      
+      # Install Teleport
+      cd /tmp
+      curl -O https://cdn.teleport.dev/teleport_14.0.0_amd64.deb
+      dpkg -i teleport_14.0.0_amd64.deb
+      
+      # Setup Teleport service
+      cat > /etc/systemd/system/teleport.service << 'TELEPORT_EOF'
+      [Unit]
+      Description=Teleport SSH Server
+      After=network.target
+      
+      [Service]
+      Type=simple
+      User=assessment
+      Group=assessment
+      ExecStart=/usr/local/bin/teleport start --config=/opt/teleport/teleport.yaml
+      ExecReload=/bin/kill -HUP $MAINPID
+      PIDFile=/var/lib/teleport/teleport.pid
+      LimitNOFILE=65536
+      
+      [Install]
+      WantedBy=multi-user.target
+      TELEPORT_EOF
+      
+      # Setup directories
+      mkdir -p /var/lib/teleport /var/log/teleport
+      chown -R assessment:assessment /var/lib/teleport /var/log/teleport /opt/teleport
+      
+      # Start Teleport
+      systemctl daemon-reload
+      systemctl enable teleport
+      systemctl start teleport
+      
+      # Wait for startup
+      sleep 30
+      
+      # Deploy containers
+      cd /opt/assessment/deployment/docker
+      docker-compose -f docker-compose.ip-keyless.yml build
+      docker-compose -f docker-compose.ip-keyless.yml up -d
+      
+      # Create admin user
+      sleep 10
+      INVITE_LINK=$(tctl users add admin security-admin --logins=assessment --ttl=24h)
+      
+      echo "=========================================="
+      echo "🎉 IP-BASED KEYLESS DEPLOYMENT COMPLETE!"
+      echo "=========================================="
+      echo ""
+      echo "🌐 Access your assessment tool:"
+      echo "   Web Interface: https://$SERVER_IP:3080"
+      echo "   Assessment Portal: http://$SERVER_IP:8080"
+      echo ""
+      echo "🔐 Admin Setup (expires in 24h):"
+      echo "$INVITE_LINK"
+      echo ""
+      echo "📱 Setup Instructions:"
+      echo "1. Copy the invite link above"
+      echo "2. Open in browser (accept SSL warning)"
+      echo "3. Set up TOTP with Google Authenticator"
+      echo "4. Start running security assessments!"
+      echo ""
+      echo "🔒 No SSH keys needed - completely keyless!"
+      echo "=========================================="
+
+runcmd:
+  - hostnamectl set-hostname secrets-assessment-keyless
+  - usermod -aG docker assessment
+  - /opt/setup/configure-firewall.sh
+  - /opt/setup/deploy-assessment-ip.sh > /var/log/deployment.log 2>&1
+
+final_message: |
+  IP-based keyless deployment completed!
+  Check deployment logs: tail -f /var/log/deployment.log
+  Access via server IP address - no domain needed!

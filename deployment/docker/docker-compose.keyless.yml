@@ -1,0 +1,98 @@
+version: '3.8'
+
+services:
+  # Assessment Tool - Certificate access only
+  assessment-tool:
+    build:
+      context: ../../
+      dockerfile: deployment/docker/Dockerfile.keyless
+    hostname: assessment-tool
+    container_name: assessment-tool
+    restart: unless-stopped
+    environment:
+      - AUTH_MODE=certificate-only
+      - TELEPORT_PROXY=localhost:3023
+      - DOMAIN=${DOMAIN}
+    volumes:
+      - assessment_data:/app/data
+      - assessment_logs:/app/logs
+      - /var/lib/teleport:/var/lib/teleport:ro  # Access to certificates
+    networks:
+      - assessment_network
+    depends_on:
+      - teleport-proxy
+    security_opt:
+      - no-new-privileges:true
+    user: "1000:1000"
+    read_only: true
+    tmpfs:
+      - /tmp:noexec,nosuid,size=100m
+
+  # Web-based access portal
+  web-portal:
+    build:
+      context: ../../
+      dockerfile: deployment/docker/Dockerfile.portal
+    hostname: web-portal
+    container_name: web-portal
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      - TELEPORT_ADDR=localhost:3023
+      - DOMAIN=${DOMAIN}
+    volumes:
+      - portal_data:/app/data:ro
+    networks:
+      - assessment_network
+    security_opt:
+      - no-new-privileges:true
+    user: "1000:1000"
+
+  # Certificate manager
+  cert-manager:
+    image: certbot/certbot:latest
+    hostname: cert-manager
+    container_name: cert-manager
+    volumes:
+      - letsencrypt_certs:/etc/letsencrypt
+      - letsencrypt_lib:/var/lib/letsencrypt
+    networks:
+      - assessment_network
+    command: >
+      sh -c "while :; do
+        certbot renew --quiet --no-self-upgrade --post-hook 'killall -USR1 teleport || true'
+        sleep 86400
+      done"
+
+  # Monitoring without SSH access
+  monitoring:
+    image: prom/prometheus:v2.48.0
+    hostname: monitoring
+    container_name: monitoring
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:9090:9090"  # Only localhost access
+    volumes:
+      - prometheus_data:/prometheus
+      - ./config/prometheus-keyless.yml:/etc/prometheus/prometheus.yml:ro
+    networks:
+      - assessment_network
+    security_opt:
+      - no-new-privileges:true
+    user: "65534:65534"
+
+volumes:
+  assessment_data:
+  assessment_logs:
+  portal_data:
+  letsencrypt_certs:
+  letsencrypt_lib:
+  prometheus_data:
+
+networks:
+  assessment_network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.22.0.0/16

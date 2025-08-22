@@ -1,0 +1,14 @@
+# Web Portal for Certificate-Based Access
+FROM python:3.11-slim-bullseye
+
+RUN pip install flask teleport-lib qrcode[pil] pyotp
+
+WORKDIR /app
+
+COPY deployment/portal/ .
+
+USER 1000:1000
+
+EXPOSE 8080
+
+CMD ["python", "portal.py"]

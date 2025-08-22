@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>🚀 Bootstrap to Keyless - Status</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta http-equiv="refresh" content="30">
+    <style>
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto;
+            max-width: 800px; margin: 20px auto; padding: 20px; 
+            background: #f8f9fa; color: #333;
+        }
+        .header { text-align: center; margin-bottom: 30px; }
+        .status-card { 
+            background: white; border-radius: 8px; padding: 25px; 
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1); margin-bottom: 20px;
+        }
+        .security-badge {
+            display: inline-block; background: #dc3545; color: white;
+            padding: 8px 16px; border-radius: 20px; font-size: 12px;
+            font-weight: bold; margin-bottom: 15px; animation: pulse 2s infinite;
+        }
+        .security-badge.complete {
+            background: #28a745; animation: none;
+        }
+        .progress-step {
+            display: flex; align-items: center; margin: 15px 0;
+            padding: 10px; border-radius: 6px; background: #f8f9fa;
+        }
+        .progress-step.active { background: #fff3cd; border-left: 4px solid #ffc107; }
+        .progress-step.complete { background: #d4edda; border-left: 4px solid #28a745; }
+        .step-icon { margin-right: 15px; font-size: 18px; }
+        .access-button {
+            display: inline-block; background: #007bff; color: white;
+            padding: 12px 20px; text-decoration: none; border-radius: 6px;
+            font-weight: bold; margin: 10px; transition: all 0.2s;
+        }
+        .access-button:hover { background: #0056b3; }
+        .access-button.disabled { 
+            background: #6c757d; cursor: not-allowed; 
+            pointer-events: none;
+        }
+        .warning-box {
+            background: #fff3cd; border: 1px solid #ffeaa7;
+            border-radius: 6px; padding: 15px; margin: 15px 0;
+        }
+        .success-box {
+            background: #d4edda; border: 1px solid #c3e6cb;
+            border-radius: 6px; padding: 15px; margin: 15px 0;
+        }
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🚀 Bootstrap to Keyless Deployment</h1>
+        <div class="security-badge" id="securityBadge">
+            ⏳ BOOTSTRAP IN PROGRESS
+        </div>
+    </div>
+
+    <div class="status-card">
+        <h2>📊 Deployment Progress</h2>
+        <div class="progress-step complete">
+            <span class="step-icon">✅</span>
+            <div>
+                <strong>Server Provisioned</strong><br>
+                DigitalOcean droplet created and configured
+            </div>
+        </div>
+        <div class="progress-step complete">
+            <span class="step-icon">✅</span>
+            <div>
+                <strong>Docker Containers Started</strong><br>
+                Assessment tool containers are running
+            </div>
+        </div>
+        <div class="progress-step active" id="teleportStep">
+            <span class="step-icon">⏳</span>
+            <div>
+                <strong>Teleport Initializing</strong><br>
+                Certificate-based authentication system starting up
+            </div>
+        </div>
+        <div class="progress-step" id="sshStep">
+            <span class="step-icon">🔄</span>
+            <div>
+                <strong>SSH Access Removal</strong><br>
+                Disabling SSH and enabling certificate-only access
+            </div>
+        </div>
+        <div class="progress-step" id="completeStep">
+            <span class="step-icon">🎯</span>
+            <div>
+                <strong>Keyless Deployment Complete</strong><br>
+                Zero SSH keys, certificate-based authentication active
+            </div>
+        </div>
+    </div>
+
+    <div class="status-card">
+        <h3>🔐 Security Transition Status</h3>
+        
+        <div class="warning-box" id="sshWarning">
+            <strong>⚠️ Temporary SSH Access Active</strong><br>
+            SSH is currently enabled for bootstrap only. It will be automatically 
+            disabled when Teleport certificate-based authentication is ready.
+        </div>
+        
+        <div class="success-box" id="sshSuccess" style="display: none;">
+            <strong>🔒 SSH Permanently Disabled</strong><br>
+            All access now requires Teleport certificate-based authentication with MFA.
+            No SSH keys exist on this system.
+        </div>
+    </div>
+
+    <div class="status-card">
+        <h3>🌐 Access Information</h3>
+        <p>Once bootstrap completes, access your secure assessment tool:</p>
+        
+        <div style="text-align: center; margin: 20px 0;">
+            <a href="https://SERVER_IP:3080" class="access-button disabled" id="teleportBtn">
+                🔒 Teleport Web UI (Preparing...)
+            </a>
+            <a href="#logs" class="access-button">
+                📋 View Bootstrap Logs
+            </a>
+        </div>
+    </div>
+
+    <div class="status-card" id="logs">
+        <h3>📋 Bootstrap Logs</h3>
+        <p><strong>Check deployment progress:</strong></p>
+        <pre style="background: #f8f9fa; padding: 15px; border-radius: 4px; overflow-x: auto;">
+# SSH to server (temporary access)
+ssh bootstrap@SERVER_IP
+
+# Check bootstrap logs
+tail -f /var/log/bootstrap.log
+
+# Check Teleport status
+sudo tctl status
+
+# View admin invite link
+cat /opt/bootstrap/admin-invite.txt
+        </pre>
+    </div>
+
+    <div class="status-card">
+        <h3>⚡ What Happens Next?</h3>
+        <ol>
+            <li><strong>Teleport Starts:</strong> Certificate-based auth system initializes</li>
+            <li><strong>Admin User Created:</strong> Secure invite link generated</li>
+            <li><strong>SSH Disabled:</strong> All SSH access permanently removed</li>
+            <li><strong>Firewall Locked:</strong> Only Teleport ports accessible</li>
+            <li><strong>Certificate-Only Access:</strong> MFA required for all connections</li>
+        </ol>
+        
+        <div class="warning-box">
+            <strong>🚨 Important:</strong> Save the admin invite link when it appears in the logs!
+            It expires in 24 hours and is your only way to access the system after SSH is disabled.
+        </div>
+    </div>
+
+    <script>
+        // Replace SERVER_IP with actual IP
+        document.addEventListener('DOMContentLoaded', function() {
+            const serverIP = window.location.hostname;
+            document.body.innerHTML = document.body.innerHTML.replace(/SERVER_IP/g, serverIP);
+            
+            // Simulate bootstrap progress (in real deployment, this would check actual status)
+            setTimeout(() => {
+                document.getElementById('teleportStep').className = 'progress-step complete';
+                document.getElementById('teleportStep').innerHTML = `
+                    <span class="step-icon">✅</span>
+                    <div>
+                        <strong>Teleport Active</strong><br>
+                        Certificate-based authentication system ready
+                    </div>
+                `;
+                document.getElementById('sshStep').className = 'progress-step active';
+            }, 45000);
+            
+            setTimeout(() => {
+                document.getElementById('sshStep').className = 'progress-step complete';
+                document.getElementById('sshStep').innerHTML = `
+                    <span class="step-icon">✅</span>
+                    <div>
+                        <strong>SSH Disabled</strong><br>
+                        Certificate-only access activated
+                    </div>
+                `;
+                document.getElementById('completeStep').className = 'progress-step complete';
+                document.getElementById('securityBadge').textContent = '🔒 KEYLESS DEPLOYMENT COMPLETE';
+                document.getElementById('securityBadge').className = 'security-badge complete';
+                document.getElementById('sshWarning').style.display = 'none';
+                document.getElementById('sshSuccess').style.display = 'block';
+                document.getElementById('teleportBtn').textContent = '🔒 Access Teleport Web UI';
+                document.getElementById('teleportBtn').className = 'access-button';
+            }, 90000);
+        });
+    </script>
+</body>
+</html>

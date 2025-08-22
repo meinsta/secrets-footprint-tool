@@ -1,0 +1,57 @@
+# Keyless Application Container
+FROM python:3.11-slim-bullseye as builder
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install --no-cache-dir --user -r requirements.txt
+
+# Production stage - certificate authentication only
+FROM python:3.11-slim-bullseye
+
+# Install Teleport client for certificate-based access
+RUN curl -O https://cdn.teleport.dev/teleport_14.0.0_amd64.deb \
+    && dpkg -i teleport_14.0.0_amd64.deb \
+    && rm teleport_14.0.0_amd64.deb
+
+# Create non-root user
+RUN groupadd -r assessment && useradd -r -g assessment -u 1000 assessment
+
+WORKDIR /app
+
+# Copy Python packages from builder
+COPY --from=builder /root/.local /home/assessment/.local
+
+# Copy application code
+COPY --chown=assessment:assessment . .
+
+# Remove any SSH-related files
+RUN find /app -name "*.key" -type f -delete \
+    && find /app -name "*.pem" -type f -delete \
+    && find /app -name "*ssh*" -type f -delete \
+    && rm -rf /app/.ssh /home/assessment/.ssh
+
+# Create secure directories
+RUN mkdir -p /app/{data,logs,config,certs} \
+    && chown -R assessment:assessment /app \
+    && chmod 700 /app/certs
+
+# Switch to non-root user
+USER assessment
+
+# Set environment for certificate-only access
+ENV PATH="/home/assessment/.local/bin:$PATH"
+ENV PYTHONPATH="/app"
+ENV TELEPORT_AUTH_TYPE="certificate"
+ENV SSH_AUTH_SOCK=""
+
+# Health check without SSH
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD python -c "import assessment_tool; print('OK')" || exit 1
+
+# Entry point for certificate-based access
+CMD ["python", "/app/assessment_tool.py", "--auth-mode=certificate"]

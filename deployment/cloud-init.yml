@@ -1,0 +1,226 @@
+#cloud-config
+
+# Keyless Secrets Assessment Tool Deployment
+# This script automatically deploys the tool without requiring SSH keys
+
+users:
+  - name: assessment
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    shell: /bin/bash
+    lock_passwd: true  # No password login
+    ssh_authorized_keys: []  # No SSH keys
+
+package_update: true
+package_upgrade: true
+
+packages:
+  - docker.io
+  - docker-compose
+  - curl
+  - jq
+  - git
+  - unzip
+  - certbot
+  - ufw
+
+write_files:
+  # Teleport configuration
+  - path: /opt/teleport/teleport.yaml
+    permissions: '0600'
+    owner: assessment:assessment
+    content: |
+      version: v3
+      teleport:
+        cluster_name: secrets-assessment
+        data_dir: /var/lib/teleport
+        log:
+          output: stderr
+          severity: INFO
+      
+      auth_service:
+        enabled: true
+        cluster_name: secrets-assessment
+        listen_addr: 0.0.0.0:3025
+        
+        # Certificate-based authentication only
+        authentication:
+          type: local
+          second_factor: webauthn  # Hardware keys preferred
+          webauthn:
+            rp_id: secrets-assessment-demo.com
+            attestation_allowed_cas: []
+            attestation_denied_cas: []
+          connector_name: ""
+          require_session_mfa: true
+          
+        # Session settings
+        session_recording: node-sync
+        session_control_timeout: 30s
+        client_idle_timeout: 2h
+        disconnect_expired_cert: true
+        
+        # Certificate settings
+        ca_key_params:
+          pkcs11:
+            module_path: ""
+            slot_number: 0
+            pin: ""
+        
+        # Cluster networking
+        cluster_networking_config:
+          client_idle_timeout: 1h
+          session_control_timeout: 2h
+          
+      proxy_service:
+        enabled: true
+        web_listen_addr: 0.0.0.0:3080
+        tunnel_listen_addr: 0.0.0.0:3024
+        public_addr: secrets-assessment-demo.com:443
+        
+        # ACME for automatic certificates
+        acme:
+          enabled: true
+          email: security@secrets-assessment-demo.com
+          
+      ssh_service:
+        enabled: true
+        listen_addr: 0.0.0.0:3022
+        labels:
+          service: secrets-assessment
+          environment: production
+          auth_method: certificate-only
+        
+        # Enhanced session recording
+        enhanced_recording:
+          enabled: true
+          command_buffer_size: 8192
+          disk_buffer_size: 128000000
+          network_buffer_size: 65536
+        
+        # Disable password authentication completely
+        permit_user_env: false
+        pam:
+          enabled: false
+
+  # Firewall configuration
+  - path: /opt/setup/configure-firewall.sh
+    permissions: '0755'
+    content: |
+      #!/bin/bash
+      # Configure secure firewall
+      ufw --force reset
+      ufw default deny incoming
+      ufw default allow outgoing
+      
+      # Allow only Teleport ports
+      ufw allow 443/tcp    # HTTPS/Teleport Web
+      ufw allow 3023/tcp   # Teleport SSH Proxy
+      ufw allow 3024/tcp   # Teleport Tunnel
+      
+      # Optional: Restrict to specific IPs
+      # ufw allow from YOUR_OFFICE_IP to any port 443
+      
+      ufw --force enable
+      log_info "Firewall configured - only Teleport ports open"
+
+  # Main deployment script
+  - path: /opt/setup/deploy-assessment.sh
+    permissions: '0755'
+    content: |
+      #!/bin/bash
+      set -euo pipefail
+      
+      log_info() { echo "[$(date)] INFO: $1"; }
+      log_error() { echo "[$(date)] ERROR: $1"; exit 1; }
+      
+      log_info "Starting keyless deployment..."
+      
+      # Create application user
+      useradd -r -s /bin/false -m -d /opt/assessment assessment || true
+      
+      # Clone repository
+      cd /opt/assessment
+      git clone https://github.com/meinsta/secrets-footprint-tool.git . || true
+      chown -R assessment:assessment /opt/assessment
+      
+      # Install Teleport
+      cd /tmp
+      curl -O https://cdn.teleport.dev/teleport_14.0.0_amd64.deb
+      dpkg -i teleport_14.0.0_amd64.deb
+      
+      # Replace placeholders in Teleport config
+      sed -i "s/secrets-assessment-demo.com/$DOMAIN/g" /opt/teleport/teleport.yaml
+      sed -i "s/security@secrets-assessment-demo.com/$CERT_EMAIL/g" /opt/teleport/teleport.yaml
+      
+      # Create systemd service for Teleport
+      cat > /etc/systemd/system/teleport.service << 'TELEPORT_EOF'
+      [Unit]
+      Description=Teleport SSH Server
+      After=network.target
+      
+      [Service]
+      Type=simple
+      User=assessment
+      Group=assessment
+      ExecStart=/usr/local/bin/teleport start --config=/opt/teleport/teleport.yaml
+      ExecReload=/bin/kill -HUP $MAINPID
+      PIDFile=/var/lib/teleport/teleport.pid
+      LimitNOFILE=65536
+      
+      [Install]
+      WantedBy=multi-user.target
+      TELEPORT_EOF
+      
+      # Set up directories
+      mkdir -p /var/lib/teleport /var/log/teleport
+      chown -R assessment:assessment /var/lib/teleport /var/log/teleport /opt/teleport
+      
+      # Start Teleport
+      systemctl daemon-reload
+      systemctl enable teleport
+      systemctl start teleport
+      
+      # Wait for Teleport to initialize
+      sleep 30
+      
+      # Deploy assessment tool containers
+      cd /opt/assessment/deployment/docker
+      
+      # Build and start assessment tool
+      docker-compose -f docker-compose.keyless.yml build
+      docker-compose -f docker-compose.keyless.yml up -d
+      
+      log_info "Deployment completed successfully!"
+      
+      # Create initial admin user
+      sleep 10
+      INVITE_LINK=$(tctl users add admin security-admin --logins=assessment --ttl=24h)
+      
+      echo "======================================"
+      echo "DEPLOYMENT COMPLETED!"
+      echo "======================================"
+      echo ""
+      echo "Access your secure assessment tool:"
+      echo "Web Interface: https://$DOMAIN"
+      echo ""
+      echo "Admin Setup Link (expires in 24h):"
+      echo "$INVITE_LINK"
+      echo ""
+      echo "Save this link securely!"
+      echo "======================================"
+
+runcmd:
+  # Update hostname
+  - hostnamectl set-hostname secrets-assessment-prod
+  
+  # Add assessment user to docker group
+  - usermod -aG docker assessment
+  
+  # Run setup scripts
+  - /opt/setup/configure-firewall.sh
+  - /opt/setup/deploy-assessment.sh > /var/log/deployment.log 2>&1
+
+final_message: |
+  Keyless Secrets Assessment Tool deployment completed!
+  Check /var/log/deployment.log for details.
+  Access via: https://secrets-assessment-demo.com
