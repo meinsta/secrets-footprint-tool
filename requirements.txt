@@ -1,13 +1,15 @@
 # Secrets Footprint Assessment Tool - Dependencies
+# SECURITY-HARDENED VERSION - MINIMAL DEPENDENCIES
 
-# Cryptography library for SSH key analysis
-cryptography>=3.4.8
-
-# Web application framework (for webapp version)
+# Web application framework (for webapp version only)
 Flask>=2.3.0
 
+# SECURITY NOTE: Cryptography library REMOVED
+# The secure version uses ONLY external system tools (ssh-keygen, ssh-add)
+# No cryptographic libraries that could potentially decrypt keys
+
 # No other external dependencies required!
-# The CLI tool is designed to work with Python standard library for maximum compatibility.
+# The CLI tool works with Python standard library + system tools for maximum security.
 
 # Optional: For enhanced terminal output (if desired)
 # colorama>=0.4.4  # Cross-platform colored terminal output
