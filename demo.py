@@ -11,7 +11,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
 from models import *
-from ssh_scanner import SSHKeyScanner
+from secure_ssh_scanner import SecureSSHKeyScanner
 from systems import SystemsManager
 from risk_engine import RiskScoringEngine
 from visualizer import SecretsFootprintVisualizer
@@ -23,7 +23,7 @@ def demo_ssh_analysis():
     print("🔍 SSH KEY ANALYSIS DEMO")
     print("=" * 50)
     
-    scanner = SSHKeyScanner()
+    scanner = SecureSSHKeyScanner()
     try:
         ssh_keys = scanner.scan_ssh_keys()
         

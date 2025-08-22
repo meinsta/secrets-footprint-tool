@@ -162,18 +162,34 @@ The tool calculates risk scores based on:
 
 ## 🔒 Privacy & Security
 
+### 🛡️ Security-Hardened Design
+- **ZERO SECRET ACCESS** - Tool is hardened to prevent reading any secret values
+- **External tools only** - Uses only system `ssh-keygen` and `ssh-add` commands
+- **Path validation** - Comprehensive protection against directory traversal attacks
+- **Resource limits** - Bounded file sizes and processing limits prevent abuse
+
 ### Local Operation
 - **No external network calls** - All analysis happens locally
 - **No data transmission** - Nothing sent to external servers
 - **Metadata only** - Secret values are never read or stored
+- **Offline analysis** - Works completely without internet connection
 
-### SSH Key Analysis
-- Only analyzes key metadata (type, size, permissions)
-- Private key content is never stored or transmitted
-- Uses system SSH tools (`ssh-keygen`) for fingerprinting
+### SSH Key Analysis (Security-Hardened)
+- **Never reads private key content** - Uses only external `ssh-keygen` tool
+- **Strict path validation** - Prevents directory traversal and symlink attacks
+- **File size limits** - Rejects suspicious files outside normal SSH key bounds
+- **No cryptographic libraries** - Cannot accidentally decrypt or expose keys
+- **Timeout protection** - All operations have strict time limits
+
+### Attack Prevention
+- ✅ **Directory traversal attacks** - Blocked by path validation
+- ✅ **Symlink attacks** - Real path resolution prevents link following
+- ✅ **Command injection** - Input sanitization blocks malicious filenames
+- ✅ **Memory exhaustion** - File size and line count limits
+- ✅ **Race conditions** - Single-pass atomic operations only
 
 ### Data Storage
-All data is stored locally:
+All data is stored locally with appropriate permissions:
 - `config/assessment_*.json` - Saved assessments
 - `reports/secrets_assessment_*.html` - HTML reports
 - `reports/secrets_data_*.json` - Raw data exports

@@ -11,14 +11,14 @@ from pathlib import Path
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 
-from flask import Flask, render_template, request, jsonify, session, send_file, redirect, url_for
+from flask import Flask, render_template, request, redirect, url_for, session, jsonify, make_response, flash
 import tempfile
 
 # Add src directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from models import AuditSession, Secret, System, SecretType, StorageLocation, RotationFrequency
-from ssh_scanner import SSHKeyScanner
+from secure_ssh_scanner import SecureSSHKeyScanner
 from systems import SystemsManager, SystemCategory
 from risk_engine import RiskScoringEngine
 from visualizer import SecretsFootprintVisualizer
@@ -187,7 +187,7 @@ def scan_ssh_keys():
         return jsonify({'error': 'No active session'}), 400
     
     try:
-        scanner = SSHKeyScanner()
+        scanner = SecureSSHKeyScanner()
         ssh_keys = scanner.scan_ssh_keys()
         
         # Convert SSH keys to secrets
@@ -433,6 +433,144 @@ def generate_report(report_type):
         return jsonify({'error': f'Report generation failed: {str(e)}'}), 500
 
 
+@app.route('/start_smart_assessment', methods=['POST'])
+def start_smart_assessment():
+    """Start a smart assessment with auto-scanning."""
+    try:
+        # Create new session
+        session_id = str(uuid.uuid4())[:8]
+        session['session_id'] = session_id
+        session['using_example'] = False
+        session['smart_assessment'] = True
+        
+        # Initialize audit session
+        audit_session = {
+            'session_id': session_id,
+            'timestamp': datetime.now().isoformat(),
+            'discovered_secrets': [],
+            'ssh_keys': [],
+            'selected_systems': [],
+            'user_responses': {},
+            'auto_scan_complete': False
+        }
+        session['audit_session'] = audit_session
+        
+        return jsonify({
+            'success': True,
+            'redirect_url': url_for('smart_configure')
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/smart-configure')
+def smart_configure():
+    """Smart assessment configuration page with auto-scan and minimal input."""
+    if not session.get('session_id') or not session.get('smart_assessment'):
+        return redirect(url_for('start_assessment'))
+    
+    return render_template('smart_configure.html')
+
+
+@app.route('/api/auto-scan', methods=['POST'])
+def auto_scan():
+    """Perform automated scanning and environment detection."""
+    if 'audit_session' not in session or not session.get('smart_assessment'):
+        return jsonify({'error': 'No active smart assessment session'}), 400
+    
+    try:
+        scan_results = {
+            'ssh_keys': [],
+            'detected_systems': [],
+            'environment_type': 'development',
+            'estimated_secrets': 0
+        }
+        
+        # 1. Scan SSH keys
+        try:
+            scanner = SecureSSHKeyScanner()
+            ssh_keys = scanner.scan_ssh_keys()
+            ssh_secrets = scanner.convert_to_secrets(ssh_keys)
+            
+            scan_results['ssh_keys'] = [_ssh_key_to_dict(key) for key in ssh_keys]
+            scan_results['estimated_secrets'] += len(ssh_secrets)
+            
+            # Update session
+            audit_data = session['audit_session']
+            audit_data['ssh_keys'] = [_ssh_key_to_dict(key) for key in ssh_keys]
+            audit_data['discovered_secrets'] = [_secret_to_dict(secret) for secret in ssh_secrets]
+            session['audit_session'] = audit_data
+            
+        except Exception as e:
+            # If SSH scanning fails, continue with empty results
+            pass
+        
+        # 2. Detect installed systems/tools
+        detected_systems = _auto_detect_systems()
+        scan_results['detected_systems'] = detected_systems
+        scan_results['estimated_secrets'] += sum(sys.get('estimated_secrets', 0) for sys in detected_systems)
+        
+        # 3. Estimate environment type based on findings
+        if len(detected_systems) > 5:
+            scan_results['environment_type'] = 'enterprise'
+        elif any('kubernetes' in sys['name'].lower() or 'vault' in sys['name'].lower() for sys in detected_systems):
+            scan_results['environment_type'] = 'enterprise'
+        elif len(detected_systems) > 2:
+            scan_results['environment_type'] = 'startup'
+        else:
+            scan_results['environment_type'] = 'development'
+        
+        return jsonify({
+            'success': True,
+            'scan_results': scan_results
+        })
+        
+    except Exception as e:
+        return jsonify({'error': f'Auto-scan failed: {str(e)}'}), 500
+
+
+@app.route('/api/finalize-smart-assessment', methods=['POST'])
+def finalize_smart_assessment():
+    """Finalize smart assessment with minimal user input."""
+    if 'audit_session' not in session or not session.get('smart_assessment'):
+        return jsonify({'error': 'No active smart assessment session'}), 400
+    
+    try:
+        data = request.get_json()
+        selected_systems = data.get('selected_systems', [])
+        environment_size = data.get('environment_size', 'small')
+        security_priority = data.get('security_priority', 'medium')
+        
+        # Auto-configure selected systems with smart defaults
+        audit_data = session['audit_session']
+        configured_systems = []
+        
+        for system_name in selected_systems:
+            system = _auto_configure_system(system_name, environment_size, security_priority)
+            if system:
+                configured_systems.append(_system_to_dict(system))
+                
+                # Generate realistic secrets for this system
+                system_secrets = _generate_smart_secrets(system, environment_size)
+                audit_data['discovered_secrets'].extend([_secret_to_dict(s) for s in system_secrets])
+        
+        audit_data['selected_systems'] = configured_systems
+        audit_data['auto_scan_complete'] = True
+        session['audit_session'] = audit_data
+        
+        return jsonify({
+            'success': True,
+            'redirect_url': url_for('show_assessment')
+        })
+        
+    except Exception as e:
+        return jsonify({'error': f'Assessment finalization failed: {str(e)}'}), 500
+
+
 @app.route('/examples')
 def show_examples():
     """Show example environments."""
@@ -480,7 +618,7 @@ def load_example_environment(audit_session: AuditSession, env_data: Dict) -> Aud
         audit_session.ssh_keys.append(ssh_key)
     
     # Convert SSH keys to secrets
-    scanner = SSHKeyScanner()
+    scanner = SecureSSHKeyScanner()
     ssh_secrets = scanner.convert_to_secrets(audit_session.ssh_keys)
     audit_session.discovered_secrets.extend(ssh_secrets)
     
@@ -935,6 +1073,204 @@ def _assessment_to_dict(assessment) -> Dict:
         'critical_findings': assessment.critical_findings,
         'recommendations': assessment.recommendations
     }
+
+
+def _auto_detect_systems() -> List[Dict]:
+    """Auto-detect installed systems and tools."""
+    detected_systems = []
+    
+    # Check for common development tools and systems
+    checks = {
+        'docker': (['docker', '--version'], 'Docker'),
+        'kubectl': (['kubectl', 'version', '--client'], 'Kubernetes'),
+        'git': (['git', '--version'], 'Git Repository'),
+        'aws': (['aws', '--version'], 'AWS'),
+        'gh': (['gh', '--version'], 'GitHub Actions'),
+        'jenkins': (['which', 'jenkins'], 'Jenkins'),
+        'vault': (['vault', 'version'], 'HashiCorp Vault'),
+        'mysql': (['mysql', '--version'], 'MySQL'),
+        'psql': (['psql', '--version'], 'PostgreSQL'),
+        'redis-cli': (['redis-cli', '--version'], 'Redis'),
+    }
+    
+    for cmd, (check_cmd, system_name) in checks.items():
+        try:
+            import subprocess
+            result = subprocess.run(check_cmd, capture_output=True, text=True, timeout=2)
+            if result.returncode == 0:
+                # Estimate secrets count based on system type
+                if system_name == 'AWS':
+                    estimated_secrets = 15
+                elif system_name == 'Kubernetes':
+                    estimated_secrets = 25
+                elif system_name in ['Jenkins', 'HashiCorp Vault']:
+                    estimated_secrets = 30
+                elif system_name == 'Docker':
+                    estimated_secrets = 8
+                elif system_name == 'GitHub Actions':
+                    estimated_secrets = 12
+                else:
+                    estimated_secrets = 5
+                
+                detected_systems.append({
+                    'name': system_name,
+                    'detected_via': cmd,
+                    'estimated_secrets': estimated_secrets,
+                    'confidence': 'high'
+                })
+        except (subprocess.TimeoutExpired, FileNotFoundError, Exception):
+            continue
+    
+    # Check for common configuration files that indicate system usage
+    config_checks = {
+        '.aws/credentials': 'AWS',
+        '.kube/config': 'Kubernetes',
+        'docker-compose.yml': 'Docker',
+        '.github/workflows': 'GitHub Actions',
+        'Jenkinsfile': 'Jenkins',
+    }
+    
+    for config_path, system_name in config_checks.items():
+        try:
+            full_path = os.path.expanduser(f'~/{config_path}')
+            if os.path.exists(full_path):
+                # Only add if not already detected
+                if not any(sys['name'] == system_name for sys in detected_systems):
+                    estimated_secrets = 10 if system_name in ['AWS', 'Kubernetes'] else 5
+                    detected_systems.append({
+                        'name': system_name,
+                        'detected_via': f'config file: {config_path}',
+                        'estimated_secrets': estimated_secrets,
+                        'confidence': 'medium'
+                    })
+        except Exception:
+            continue
+    
+    return detected_systems
+
+
+def _auto_configure_system(system_name: str, environment_size: str, security_priority: str) -> System:
+    """Auto-configure a system with smart defaults based on environment context."""
+    template = systems_manager.get_system_template(system_name)
+    if not template:
+        return None
+    
+    # Get base secrets count from template risk level (higher risk = more typical secrets)
+    base_secrets_count = template.typical_risk_level * 3  # Convert 1-5 scale to 3-15 secrets
+    
+    # Smart defaults based on environment size and security priority
+    if environment_size == 'large':
+        secrets_count = base_secrets_count * 2
+        encryption_enabled = True
+        audit_logging = True
+        access_controls = True
+        auto_rotation = security_priority == 'high'
+    elif environment_size == 'medium':
+        secrets_count = base_secrets_count
+        encryption_enabled = security_priority in ['high', 'medium']
+        audit_logging = security_priority == 'high'
+        access_controls = security_priority == 'high'
+        auto_rotation = security_priority == 'high'
+    else:  # small
+        secrets_count = max(3, base_secrets_count // 2)
+        encryption_enabled = security_priority == 'high'
+        audit_logging = False
+        access_controls = False
+        auto_rotation = False
+    
+    # Override with template capabilities
+    encryption_enabled = encryption_enabled and template.supports_encryption
+    audit_logging = audit_logging and template.supports_audit_logging
+    access_controls = access_controls and template.supports_access_controls
+    auto_rotation = auto_rotation and template.supports_rotation
+    
+    # Calculate risk score based on configuration
+    risk_score = template.typical_risk_level  # Start with template base risk
+    if not encryption_enabled and template.supports_encryption:
+        risk_score += 1
+    if not audit_logging and template.supports_audit_logging:
+        risk_score += 1
+    if not access_controls and template.supports_access_controls:
+        risk_score += 1
+    if not auto_rotation and template.supports_rotation:
+        risk_score += 1
+    
+    risk_score = min(5, risk_score)  # Cap at 5
+    
+    return System(
+        name=system_name,
+        type=template.category.value,
+        is_used=True,
+        secrets_count=secrets_count,
+        encryption_enabled=encryption_enabled,
+        access_controls=access_controls,
+        audit_logging=audit_logging,
+        auto_rotation=auto_rotation,
+        risk_score=risk_score
+    )
+
+
+def _generate_smart_secrets(system: System, environment_size: str) -> List[Secret]:
+    """Generate realistic secrets for a system based on smart configuration."""
+    secrets = []
+    base_date = datetime.now() - timedelta(days=90)
+    
+    # Common secret types based on system type
+    if system.name == 'AWS':
+        secret_types = [SecretType.CLOUD_ACCESS_KEY, SecretType.DATABASE_PASSWORD]
+        location = StorageLocation.CLOUD_SECRET_MANAGER if system.encryption_enabled else StorageLocation.ENVIRONMENT_VARIABLES
+    elif system.name == 'GitHub Actions':
+        secret_types = [SecretType.API_KEY, SecretType.WEBHOOK_SECRET]
+        location = StorageLocation.CI_CD_VARIABLES
+    elif system.name == 'Docker':
+        secret_types = [SecretType.DATABASE_PASSWORD, SecretType.API_KEY]
+        location = StorageLocation.ENVIRONMENT_VARIABLES
+    elif system.name == 'Kubernetes':
+        secret_types = [SecretType.TLS_CERTIFICATE, SecretType.DATABASE_PASSWORD, SecretType.API_KEY]
+        location = StorageLocation.CLOUD_SECRET_MANAGER if system.encryption_enabled else StorageLocation.ENVIRONMENT_VARIABLES
+    elif 'Database' in system.name or 'MySQL' in system.name or 'PostgreSQL' in system.name:
+        secret_types = [SecretType.DATABASE_PASSWORD]
+        location = StorageLocation.DATABASE
+    else:
+        secret_types = [SecretType.API_KEY, SecretType.DATABASE_PASSWORD]
+        location = StorageLocation.ENVIRONMENT_VARIABLES
+    
+    # Generate secrets
+    for i in range(system.secrets_count):
+        secret_type = secret_types[i % len(secret_types)]
+        
+        # Determine risk factors based on system configuration
+        risk_factors = []
+        if not system.encryption_enabled:
+            risk_factors.append('Unencrypted storage')
+        if not system.auto_rotation:
+            risk_factors.append('Never rotated')
+        if not system.access_controls:
+            risk_factors.append('No access controls')
+        
+        # Determine access level based on security configuration
+        if system.access_controls:
+            access_level = 'restricted'
+        elif system.encryption_enabled:
+            access_level = 'internal'
+        else:
+            access_level = 'public'
+        
+        secrets.append(Secret(
+            id=f"{system.name.lower()}_smart_secret_{i+1}",
+            secret_type=secret_type,
+            name=f"{system.name} {secret_type.value.replace('_', ' ').title()} {i+1}",
+            location=location,
+            created_date=base_date + timedelta(days=i*5),
+            last_rotated=base_date + timedelta(days=i*5) if system.auto_rotation else base_date,
+            rotation_frequency=RotationFrequency.QUARTERLY if system.auto_rotation else RotationFrequency.NEVER,
+            access_level=access_level,
+            encryption_status=system.encryption_enabled,
+            shared_with=[],
+            risk_factors=risk_factors
+        ))
+    
+    return secrets
 
 
 if __name__ == '__main__':

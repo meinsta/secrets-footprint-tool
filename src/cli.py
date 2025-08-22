@@ -12,7 +12,7 @@ from datetime import datetime
 from pathlib import Path
 
 from models import AuditSession, Secret, System
-from ssh_scanner import SSHKeyScanner
+from secure_ssh_scanner import SecureSSHKeyScanner
 from systems import SystemsManager, SystemCategory
 from risk_engine import RiskScoringEngine
 from visualizer import SecretsFootprintVisualizer
@@ -22,7 +22,7 @@ class SecretsFootprintCLI:
     """Interactive CLI for secrets footprint assessment."""
     
     def __init__(self):
-        self.ssh_scanner = SSHKeyScanner()
+        self.ssh_scanner = SecureSSHKeyScanner()
         self.systems_manager = SystemsManager()
         self.risk_engine = RiskScoringEngine()
         self.visualizer = SecretsFootprintVisualizer()

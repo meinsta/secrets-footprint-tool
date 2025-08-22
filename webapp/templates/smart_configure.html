@@ -1,0 +1,734 @@
+{% extends "base.html" %}
+
+{% block title %}Smart Assessment - Secrets Footprint Assessment Tool{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row justify-content-center">
+        <div class="col-lg-10">
+            <!-- Header -->
+            <div class="text-center mb-5">
+                <h1 class="display-5 fw-bold">
+                    <i class="fas fa-magic text-primary me-3"></i>
+                    Smart Assessment
+                </h1>
+                <p class="lead text-muted">
+                    Automated scanning with minimal configuration required
+                </p>
+            </div>
+
+            <!-- Progress Bar -->
+            <div class="card border-0 mb-4">
+                <div class="card-body">
+                    <div class="progress-steps">
+                        <div class="progress-step active" id="scan-step">
+                            <div class="step-circle">1</div>
+                            <div class="step-label">Auto-Scan</div>
+                        </div>
+                        <div class="progress-step" id="config-step">
+                            <div class="step-circle">2</div>
+                            <div class="step-label">Quick Config</div>
+                        </div>
+                        <div class="progress-step" id="results-step">
+                            <div class="step-circle">3</div>
+                            <div class="step-label">Results</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Auto-Scan Section -->
+            <div id="auto-scan-section" class="card border-primary">
+                <div class="card-header bg-primary text-white">
+                    <h4 class="mb-0">
+                        <i class="fas fa-search me-2"></i>
+                        Automated Environment Scanning
+                    </h4>
+                </div>
+                <div class="card-body">
+                    <div id="scan-status" class="text-center py-4">
+                        <div class="spinner-border text-primary mb-3" role="status" style="width: 3rem; height: 3rem;">
+                            <span class="visually-hidden">Scanning...</span>
+                        </div>
+                        <h5 class="text-primary">Initializing Smart Scan...</h5>
+                        <p class="text-muted">Preparing to analyze your environment</p>
+                        <button type="button" class="btn btn-primary btn-lg" onclick="startAutoScan()" id="start-scan-btn">
+                            <i class="fas fa-rocket me-2"></i>
+                            Start Auto-Scan
+                        </button>
+                    </div>
+                    
+                    <div id="scan-progress" style="display: none;">
+                        <div class="row mb-4">
+                            <div class="col-md-6">
+                                <div class="scan-item" id="ssh-scan">
+                                    <div class="d-flex align-items-center">
+                                        <div class="scan-icon me-3">
+                                            <i class="fas fa-key text-muted"></i>
+                                        </div>
+                                        <div class="flex-grow-1">
+                                            <h6 class="mb-1">SSH Key Analysis</h6>
+                                            <small class="text-muted">Scanning ~/.ssh directory</small>
+                                        </div>
+                                        <div class="scan-status">
+                                            <i class="fas fa-clock text-muted"></i>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="scan-item" id="system-scan">
+                                    <div class="d-flex align-items-center">
+                                        <div class="scan-icon me-3">
+                                            <i class="fas fa-server text-muted"></i>
+                                        </div>
+                                        <div class="flex-grow-1">
+                                            <h6 class="mb-1">System Detection</h6>
+                                            <small class="text-muted">Finding installed tools</small>
+                                        </div>
+                                        <div class="scan-status">
+                                            <i class="fas fa-clock text-muted"></i>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="progress mb-3">
+                            <div class="progress-bar progress-bar-animated" role="progressbar" 
+                                 style="width: 0%" id="scan-progress-bar"></div>
+                        </div>
+                        
+                        <div class="text-center">
+                            <small class="text-muted" id="scan-status-text">Initializing scan...</small>
+                        </div>
+                    </div>
+
+                    <!-- Scan Results -->
+                    <div id="scan-results" style="display: none;">
+                        <div class="alert alert-success">
+                            <div class="d-flex align-items-center">
+                                <i class="fas fa-check-circle text-success me-3" style="font-size: 2rem;"></i>
+                                <div>
+                                    <h5 class="alert-heading mb-1">Scan Complete!</h5>
+                                    <p class="mb-0">Found <span id="total-findings">0</span> systems and <span id="estimated-secrets">0</span> potential secrets</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="row mb-4">
+                            <div class="col-md-4">
+                                <div class="card bg-light">
+                                    <div class="card-body text-center">
+                                        <i class="fas fa-key text-primary mb-2" style="font-size: 2rem;"></i>
+                                        <h5 class="card-title" id="ssh-keys-count">0</h5>
+                                        <p class="card-text small text-muted">SSH Keys Found</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="card bg-light">
+                                    <div class="card-body text-center">
+                                        <i class="fas fa-server text-info mb-2" style="font-size: 2rem;"></i>
+                                        <h5 class="card-title" id="systems-count">0</h5>
+                                        <p class="card-text small text-muted">Systems Detected</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="card bg-light">
+                                    <div class="card-body text-center">
+                                        <i class="fas fa-shield-alt text-warning mb-2" style="font-size: 2rem;"></i>
+                                        <h5 class="card-title" id="environment-type">Unknown</h5>
+                                        <p class="card-text small text-muted">Environment Type</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="d-grid">
+                            <button type="button" class="btn btn-primary btn-lg" onclick="showConfiguration()">
+                                <i class="fas fa-arrow-right me-2"></i>
+                                Continue to Configuration
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Configuration Section -->
+            <div id="configuration-section" class="card border-success mt-4" style="display: none;">
+                <div class="card-header bg-success text-white">
+                    <h4 class="mb-0">
+                        <i class="fas fa-cogs me-2"></i>
+                        Quick Configuration
+                        <small class="ms-2">Just 3 quick questions</small>
+                    </h4>
+                </div>
+                <div class="card-body">
+                    <form id="smart-config-form">
+                        <!-- Question 1: Environment Size -->
+                        <div class="mb-4">
+                            <label class="form-label fw-bold">
+                                <i class="fas fa-building me-2 text-primary"></i>
+                                1. What's your environment size?
+                            </label>
+                            <div class="row g-3">
+                                <div class="col-md-4">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="radio" name="environment_size" 
+                                               id="size_small" value="small" checked>
+                                        <label class="form-check-label w-100" for="size_small">
+                                            <div class="card h-100 radio-card">
+                                                <div class="card-body text-center">
+                                                    <i class="fas fa-laptop text-primary mb-2"></i>
+                                                    <h6 class="card-title">Small</h6>
+                                                    <small class="text-muted">1-10 developers</small>
+                                                </div>
+                                            </div>
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="radio" name="environment_size" 
+                                               id="size_medium" value="medium">
+                                        <label class="form-check-label w-100" for="size_medium">
+                                            <div class="card h-100 radio-card">
+                                                <div class="card-body text-center">
+                                                    <i class="fas fa-users text-info mb-2"></i>
+                                                    <h6 class="card-title">Medium</h6>
+                                                    <small class="text-muted">10-50 developers</small>
+                                                </div>
+                                            </div>
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="radio" name="environment_size" 
+                                               id="size_large" value="large">
+                                        <label class="form-check-label w-100" for="size_large">
+                                            <div class="card h-100 radio-card">
+                                                <div class="card-body text-center">
+                                                    <i class="fas fa-city text-warning mb-2"></i>
+                                                    <h6 class="card-title">Large</h6>
+                                                    <small class="text-muted">50+ developers</small>
+                                                </div>
+                                            </div>
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Question 2: Security Priority -->
+                        <div class="mb-4">
+                            <label class="form-label fw-bold">
+                                <i class="fas fa-shield-alt me-2 text-success"></i>
+                                2. What's your security priority level?
+                            </label>
+                            <div class="row g-3">
+                                <div class="col-md-4">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="radio" name="security_priority" 
+                                               id="security_basic" value="basic">
+                                        <label class="form-check-label w-100" for="security_basic">
+                                            <div class="card h-100 radio-card">
+                                                <div class="card-body text-center">
+                                                    <i class="fas fa-lock text-secondary mb-2"></i>
+                                                    <h6 class="card-title">Basic</h6>
+                                                    <small class="text-muted">Standard protection</small>
+                                                </div>
+                                            </div>
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="radio" name="security_priority" 
+                                               id="security_medium" value="medium" checked>
+                                        <label class="form-check-label w-100" for="security_medium">
+                                            <div class="card h-100 radio-card">
+                                                <div class="card-body text-center">
+                                                    <i class="fas fa-shield text-primary mb-2"></i>
+                                                    <h6 class="card-title">Medium</h6>
+                                                    <small class="text-muted">Enhanced security</small>
+                                                </div>
+                                            </div>
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="radio" name="security_priority" 
+                                               id="security_high" value="high">
+                                        <label class="form-check-label w-100" for="security_high">
+                                            <div class="card h-100 radio-card">
+                                                <div class="card-body text-center">
+                                                    <i class="fas fa-shield-alt text-danger mb-2"></i>
+                                                    <h6 class="card-title">High</h6>
+                                                    <small class="text-muted">Maximum security</small>
+                                                </div>
+                                            </div>
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Question 3: System Selection -->
+                        <div class="mb-4">
+                            <label class="form-label fw-bold">
+                                <i class="fas fa-check-square me-2 text-info"></i>
+                                3. Select systems to include in assessment:
+                            </label>
+                            <p class="text-muted small mb-3">We detected these systems in your environment. Select which ones to analyze:</p>
+                            <div id="detected-systems-list">
+                                <!-- Dynamically populated -->
+                            </div>
+                        </div>
+
+                        <div class="d-grid gap-2">
+                            <button type="button" class="btn btn-success btn-lg" onclick="finalizeAssessment()">
+                                <i class="fas fa-chart-line me-2"></i>
+                                <span class="loading-spinner spinner-border spinner-border-sm me-2" style="display: none;"></span>
+                                Generate Assessment
+                            </button>
+                            <button type="button" class="btn btn-outline-secondary" onclick="backToScan()">
+                                <i class="fas fa-arrow-left me-2"></i>
+                                Back to Scan Results
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Loading Section -->
+            <div id="finalizing-section" class="card border-warning mt-4" style="display: none;">
+                <div class="card-header bg-warning text-dark">
+                    <h4 class="mb-0">
+                        <i class="fas fa-cogs me-2"></i>
+                        Finalizing Assessment
+                    </h4>
+                </div>
+                <div class="card-body text-center py-5">
+                    <div class="spinner-border text-warning mb-3" role="status" style="width: 3rem; height: 3rem;">
+                        <span class="visually-hidden">Processing...</span>
+                    </div>
+                    <h5 class="text-warning">Processing Your Configuration...</h5>
+                    <p class="text-muted">Analyzing systems and generating risk assessment</p>
+                    <div class="progress mt-3" style="height: 10px;">
+                        <div class="progress-bar progress-bar-striped progress-bar-animated bg-warning" 
+                             role="progressbar" style="width: 100%"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.progress-steps {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    position: relative;
+    margin: 1rem 0;
+}
+
+.progress-steps::before {
+    content: '';
+    position: absolute;
+    top: 20px;
+    left: 50px;
+    right: 50px;
+    height: 2px;
+    background: #dee2e6;
+    z-index: 1;
+}
+
+.progress-step {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    position: relative;
+    z-index: 2;
+}
+
+.step-circle {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: #dee2e6;
+    color: #6c757d;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    margin-bottom: 8px;
+    transition: all 0.3s ease;
+}
+
+.progress-step.active .step-circle {
+    background: #0d6efd;
+    color: white;
+}
+
+.progress-step.completed .step-circle {
+    background: #198754;
+    color: white;
+}
+
+.step-label {
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: #6c757d;
+}
+
+.progress-step.active .step-label {
+    color: #0d6efd;
+}
+
+.progress-step.completed .step-label {
+    color: #198754;
+}
+
+.scan-item {
+    padding: 1rem;
+    border: 1px solid #dee2e6;
+    border-radius: 0.375rem;
+    margin-bottom: 0.5rem;
+    transition: all 0.3s ease;
+}
+
+.scan-item.scanning {
+    border-color: #0d6efd;
+    background-color: #f8f9ff;
+}
+
+.scan-item.complete {
+    border-color: #198754;
+    background-color: #f8fff9;
+}
+
+.scan-item.scanning .scan-icon i {
+    color: #0d6efd !important;
+}
+
+.scan-item.complete .scan-icon i {
+    color: #198754 !important;
+}
+
+.scan-item .scan-status i.fa-spinner {
+    color: #0d6efd;
+}
+
+.scan-item .scan-status i.fa-check {
+    color: #198754;
+}
+
+.radio-card {
+    transition: all 0.2s ease;
+    cursor: pointer;
+    border: 2px solid transparent;
+}
+
+.form-check-input:checked ~ .form-check-label .radio-card {
+    border-color: var(--bs-primary);
+    background-color: #f8f9ff;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+}
+
+.radio-card:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.system-checkbox {
+    padding: 0.75rem;
+    border: 1px solid #dee2e6;
+    border-radius: 0.375rem;
+    margin-bottom: 0.5rem;
+    transition: all 0.2s ease;
+    cursor: pointer;
+}
+
+.system-checkbox:hover {
+    background-color: #f8f9fa;
+}
+
+.system-checkbox input:checked + .system-info {
+    color: #0d6efd;
+}
+</style>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+let scanResults = null;
+
+document.addEventListener('DOMContentLoaded', function() {
+    // Initialize the smart assessment
+    hideStartScanButton();
+    
+    // Make radio cards clickable
+    const radioCards = document.querySelectorAll('.radio-card');
+    radioCards.forEach(card => {
+        card.addEventListener('click', function() {
+            const radio = this.closest('.form-check').querySelector('input[type="radio"]');
+            radio.checked = true;
+        });
+    });
+});
+
+function hideStartScanButton() {
+    document.getElementById('start-scan-btn').style.display = 'none';
+    document.querySelector('#scan-status h5').textContent = 'Ready to Scan';
+    document.querySelector('#scan-status p').textContent = 'Click below to start automated environment detection';
+    document.getElementById('start-scan-btn').style.display = 'block';
+}
+
+function startAutoScan() {
+    // Hide start button and show progress
+    document.getElementById('start-scan-btn').style.display = 'none';
+    document.getElementById('scan-progress').style.display = 'block';
+    
+    updateStep('config-step', false);
+    updateStep('results-step', false);
+    
+    // Start scanning animation
+    let progress = 0;
+    const progressBar = document.getElementById('scan-progress-bar');
+    const statusText = document.getElementById('scan-status-text');
+    
+    // Phase 1: SSH Key Scanning
+    statusText.textContent = 'Scanning SSH keys...';
+    document.getElementById('ssh-scan').classList.add('scanning');
+    document.querySelector('#ssh-scan .scan-status').innerHTML = '<i class="fas fa-spinner fa-spin text-primary"></i>';
+    
+    const scanInterval = setInterval(() => {
+        progress += 10;
+        progressBar.style.width = progress + '%';
+        
+        if (progress === 30) {
+            // SSH scan complete
+            document.getElementById('ssh-scan').classList.remove('scanning');
+            document.getElementById('ssh-scan').classList.add('complete');
+            document.querySelector('#ssh-scan .scan-status').innerHTML = '<i class="fas fa-check text-success"></i>';
+            
+            // Start system detection
+            statusText.textContent = 'Detecting installed systems...';
+            document.getElementById('system-scan').classList.add('scanning');
+            document.querySelector('#system-scan .scan-status').innerHTML = '<i class="fas fa-spinner fa-spin text-primary"></i>';
+        } else if (progress === 70) {
+            // System scan complete
+            document.getElementById('system-scan').classList.remove('scanning');
+            document.getElementById('system-scan').classList.add('complete');
+            document.querySelector('#system-scan .scan-status').innerHTML = '<i class="fas fa-check text-success"></i>';
+            
+            statusText.textContent = 'Analyzing environment...';
+        } else if (progress >= 100) {
+            clearInterval(scanInterval);
+            // Call actual scan API
+            performActualScan();
+        }
+    }, 200);
+}
+
+function performActualScan() {
+    fetch('/api/auto-scan', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({})
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            scanResults = data.scan_results;
+            showScanResults();
+        } else {
+            alert('Scan failed: ' + data.error);
+            resetScan();
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Scan failed. Please try again.');
+        resetScan();
+    });
+}
+
+function showScanResults() {
+    // Hide progress and show results
+    document.getElementById('scan-progress').style.display = 'none';
+    document.getElementById('scan-results').style.display = 'block';
+    
+    // Update step progress
+    updateStep('scan-step', true);
+    
+    // Populate results
+    document.getElementById('ssh-keys-count').textContent = scanResults.ssh_keys.length;
+    document.getElementById('systems-count').textContent = scanResults.detected_systems.length;
+    document.getElementById('environment-type').textContent = scanResults.environment_type.charAt(0).toUpperCase() + scanResults.environment_type.slice(1);
+    document.getElementById('total-findings').textContent = scanResults.detected_systems.length;
+    document.getElementById('estimated-secrets').textContent = scanResults.estimated_secrets;
+}
+
+function showConfiguration() {
+    // Show configuration section
+    document.getElementById('configuration-section').style.display = 'block';
+    document.getElementById('configuration-section').scrollIntoView({ 
+        behavior: 'smooth', 
+        block: 'start' 
+    });
+    
+    // Update step progress
+    updateStep('config-step', false);
+    document.getElementById('config-step').classList.add('active');
+    
+    // Populate detected systems
+    populateDetectedSystems();
+}
+
+function populateDetectedSystems() {
+    const container = document.getElementById('detected-systems-list');
+    container.innerHTML = '';
+    
+    if (scanResults.detected_systems.length === 0) {
+        container.innerHTML = '<p class="text-muted">No systems detected automatically. You can still proceed with SSH key analysis.</p>';
+        return;
+    }
+    
+    scanResults.detected_systems.forEach((system, index) => {
+        const systemDiv = document.createElement('div');
+        systemDiv.className = 'system-checkbox';
+        systemDiv.innerHTML = `
+            <div class="form-check">
+                <input class="form-check-input" type="checkbox" 
+                       id="system_${index}" name="selected_systems" 
+                       value="${system.name}" checked>
+                <label class="form-check-label system-info" for="system_${index}">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <strong>${system.name}</strong>
+                            <small class="text-muted d-block">Detected via: ${system.detected_via}</small>
+                        </div>
+                        <div class="text-end">
+                            <span class="badge bg-info">${system.estimated_secrets} secrets</span>
+                            <small class="text-muted d-block">${system.confidence} confidence</small>
+                        </div>
+                    </div>
+                </label>
+            </div>
+        `;
+        
+        systemDiv.addEventListener('click', function(e) {
+            if (e.target.type !== 'checkbox') {
+                const checkbox = this.querySelector('input[type="checkbox"]');
+                checkbox.checked = !checkbox.checked;
+            }
+        });
+        
+        container.appendChild(systemDiv);
+    });
+}
+
+function finalizeAssessment() {
+    const button = document.querySelector('#smart-config-form button[onclick="finalizeAssessment()"]');
+    const spinner = button.querySelector('.loading-spinner');
+    
+    // Show loading state
+    button.disabled = true;
+    spinner.style.display = 'inline-block';
+    
+    // Get form data
+    const formData = new FormData(document.getElementById('smart-config-form'));
+    const selectedSystems = Array.from(document.querySelectorAll('input[name="selected_systems"]:checked'))
+                                  .map(cb => cb.value);
+    
+    const assessmentData = {
+        selected_systems: selectedSystems,
+        environment_size: formData.get('environment_size'),
+        security_priority: formData.get('security_priority')
+    };
+    
+    // Show finalizing section
+    document.getElementById('finalizing-section').style.display = 'block';
+    document.getElementById('finalizing-section').scrollIntoView({ 
+        behavior: 'smooth', 
+        block: 'start' 
+    });
+    
+    // Call finalization API
+    fetch('/api/finalize-smart-assessment', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(assessmentData)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Update step progress
+            updateStep('config-step', true);
+            updateStep('results-step', false);
+            document.getElementById('results-step').classList.add('active');
+            
+            // Redirect to results
+            window.location.href = data.redirect_url;
+        } else {
+            alert('Assessment finalization failed: ' + data.error);
+            resetFinalization();
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Assessment finalization failed. Please try again.');
+        resetFinalization();
+    });
+    
+    function resetFinalization() {
+        button.disabled = false;
+        spinner.style.display = 'none';
+        document.getElementById('finalizing-section').style.display = 'none';
+    }
+}
+
+function backToScan() {
+    document.getElementById('configuration-section').style.display = 'none';
+    updateStep('config-step', false);
+    document.getElementById('scan-step').classList.add('active');
+}
+
+function resetScan() {
+    document.getElementById('scan-progress').style.display = 'none';
+    document.getElementById('start-scan-btn').style.display = 'block';
+    document.getElementById('scan-progress-bar').style.width = '0%';
+    
+    // Reset scan items
+    document.querySelectorAll('.scan-item').forEach(item => {
+        item.classList.remove('scanning', 'complete');
+        const icon = item.querySelector('.scan-status i');
+        icon.className = 'fas fa-clock text-muted';
+    });
+}
+
+function updateStep(stepId, completed) {
+    const step = document.getElementById(stepId);
+    step.classList.remove('active');
+    if (completed) {
+        step.classList.add('completed');
+        step.querySelector('.step-circle').innerHTML = '<i class="fas fa-check"></i>';
+    } else {
+        step.classList.remove('completed');
+        const stepNumber = stepId === 'scan-step' ? '1' : stepId === 'config-step' ? '2' : '3';
+        step.querySelector('.step-circle').textContent = stepNumber;
+    }
+}
+</script>
+{% endblock %}
